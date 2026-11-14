@@ -110,3 +110,63 @@ def test_sampling_size_fraction_exclusive(config_factory, base_contract):
     contract["sampling"]["fraction"] = 0.5
     path = config_factory(contract=contract)
     assert_code("GS-CFG-020", lambda: load_run_config(path))
+
+
+def test_strata_field_list_and_per_stratum_min(config_factory, base_contract):
+    contract = copy.deepcopy(base_contract)
+    contract["sampling"]["strata_field"] = ["region", "status"]
+    contract["sampling"]["per_stratum_min"] = 3
+    path = config_factory(contract=contract)
+    sampling = load_run_config(path).contract.sampling
+    assert sampling.strata_field == ("region", "status")
+    assert sampling.strata_fields == ("region", "status")
+    assert sampling.per_stratum_min == 3
+    assert sampling.to_dict()["strata_field"] == ["region", "status"]
+
+
+def test_single_strata_field_semantics_unchanged():
+    config = load_run_config(ROOT / "configs" / "demo.yaml")
+    sampling = config.contract.sampling
+    assert sampling.strata_field == "region"
+    assert sampling.strata_fields == ("region",)
+    assert sampling.per_stratum_min is None
+    assert "per_stratum_min" not in sampling.to_dict()
+
+
+def test_strata_field_list_rejects_unknown_or_duplicate_fields(config_factory, base_contract):
+    contract = copy.deepcopy(base_contract)
+    contract["sampling"]["strata_field"] = ["region", "no_such_column"]
+    path = config_factory(contract=contract)
+    with pytest.raises(GateSamplerError) as caught:
+        load_run_config(path)
+    assert caught.value.code == "GS-CFG-020"
+    assert "no_such_column" in caught.value.message
+
+    duplicate = copy.deepcopy(base_contract)
+    duplicate["sampling"]["strata_field"] = ["region", "region"]
+    path = config_factory(contract=duplicate)
+    with pytest.raises(GateSamplerError) as caught:
+        load_run_config(path)
+    assert caught.value.code == "GS-CFG-020"
+
+
+def test_strata_field_empty_list_rejected(config_factory, base_contract):
+    contract = copy.deepcopy(base_contract)
+    contract["sampling"]["strata_field"] = []
+    path = config_factory(contract=contract)
+    assert_code("GS-CFG-004", lambda: load_run_config(path))
+
+
+def test_per_stratum_min_requires_stratified_and_positive(config_factory, base_contract):
+    contract = copy.deepcopy(base_contract)
+    contract["sampling"]["per_stratum_min"] = 0
+    path = config_factory(contract=contract)
+    assert_code("GS-CFG-004", lambda: load_run_config(path))
+
+    reservoir = copy.deepcopy(base_contract)
+    reservoir["sampling"] = {"method": "reservoir", "seed": 1, "size": 5, "per_stratum_min": 2}
+    path = config_factory(contract=reservoir)
+    with pytest.raises(GateSamplerError) as caught:
+        load_run_config(path)
+    assert caught.value.code == "GS-CFG-020"
+    assert "per_stratum_min" in (caught.value.location or "")

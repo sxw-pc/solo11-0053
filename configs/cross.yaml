@@ -1,0 +1,22 @@
+version: "1.0"
+contract: ../fixtures/contracts/orders_contract.yaml
+strict: false
+
+contract_overrides:
+  description: "双字段交叉分层演示：region × status，含单条稀疏层与每层最小覆盖"
+  sampling:
+    method: stratified
+    seed: 20240117
+    size: 16
+    strata_field: [region, status]
+    per_stratum_min: 2
+
+output:
+  dir: out-cross
+  ledger: out-cross/gate_sampler.sqlite3
+
+batches:
+  - batch_id: batch_cross
+    source: ../fixtures/batches/batch_cross.csv
+    format: csv
+    expected_rows: 17

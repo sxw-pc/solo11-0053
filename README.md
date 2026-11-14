@@ -18,7 +18,10 @@ python -m pytest -q
 
 ```bash
 python -m gatesampler run --config configs/strict.yaml
+python -m gatesampler run --config configs/cross.yaml
 ```
+
+后者演示 `region × status` 双字段交叉分层与 `per_stratum_min` 最小覆盖。
 
 ## 演示输出
 
@@ -35,7 +38,7 @@ ledger=out/gate_sampler.sqlite3
 ## 目录说明
 
 ```text
-configs/                 demo / strict 运行配置
+configs/                 demo / strict / cross 运行配置
 fixtures/contracts/      闸门契约 YAML
 fixtures/batches/        CSV、JSONL、基线批次（确定性合成）
 gatesampler/config*.py   配置与契约校验、稳定错误码
@@ -73,10 +76,12 @@ batches:
 | 方法 | 说明 |
 | --- | --- |
 | `systematic` | 等距抽样，随机起点由显式 seed 派生 |
-| `stratified` | 按 `strata_field` 分层，按比例分配并在每层内用派生种子抽样；目标样本量低于非空层数时报 `GS-SMP-001` |
+| `stratified` | 按 `strata_field` 分层（支持单字段或字段列表交叉分层），按比例分配并在每层内用派生种子抽样；可用 `per_stratum_min` 声明每层最小覆盖；目标样本量低于非空层数时报 `GS-SMP-001` |
 | `reservoir` | 单遍 Algorithm R 蓄水池抽样 |
 
 样本量用 `size`（固定条数）或 `fraction`（比例，向上取整）声明，两者只能出现一个。相同 `seed + 输入 + 方法 + 参数` 得到逐字节一致的抽样结果，并记录 `sample_fingerprint`。
+
+交叉分层示例见 `configs/cross.yaml`：`strata_field: [region, status]` 按组合键分层，`per_stratum_min: 2` 保证稀疏层覆盖；若最小覆盖之和超过目标样本量，引擎会按确定优先级全局缩减并在报告的 `sampling.details` 中记录每层 `population`、`sample`、`minimum`、`undercoverage` 以及整体 `minimum_shortfall`。
 
 七类断言：`count`（行数守恒）、`unique`（主键唯一，可显式 `full_scan: true` 全量校验）、`domain`（枚举合法）、`range`（数值/长度边界）、`nullrate`（字段空值率）、`duplicate`（字段重复率）、`drift`（相对基线的最大占比偏移）。每条断言输出 `status / metric / threshold / evidence / code / message`；样本内命中行以记录号定位。`unique` 若不做全量会在证据中明确写出“样本范围无法证明整批唯一”的说明。
 

@@ -59,6 +59,9 @@ sampling:
   seed: 20240117
   size: 14
   strata_field: region
+  # 交叉分层时改为列表，并可声明每层最小覆盖：
+  # strata_field: [region, status]
+  # per_stratum_min: 2
 
 assertions:
   - { id: row_count_match, type: count, tolerance: 0, severity: fail }
@@ -99,12 +102,18 @@ decision:
 | `seed` | 必填非负 64 位整数；禁止隐式随机 |
 | `size` | 固定样本量，正整数；与 `fraction` 二选一 |
 | `fraction` | `0 < fraction <= 1`，样本量向上取整；与 `size` 二选一 |
-| `strata_field` | 仅 `stratified` 必填，且须在 schema 中声明 |
+| `strata_field` | 仅 `stratified` 必填；单个字段名，或字段名列表（按组合键交叉分层，列表内不得重复且须在 schema 中声明） |
+| `per_stratum_min` | 可选，仅 `stratified`；每个非空层的最小抽样本数（正整数） |
 
 三层行为：
 
 - `systematic`：按 `n / k` 等距取值，起点由 seed 随机化。
 - `stratified`：按字段值分层；样本量按层规模分配并保证每层至少 1 条；目标样本量小于非空层数时报 `GS-SMP-001`；每层使用 `sha256(seed:stratum)` 派生种子做系统抽样。
+  - 组合键：`strata_field` 为列表时，层身份由按声明顺序排列的各字段类型化取值组成，序列化为规范 JSON 数组（例如 `["s:north","s:paid"]`）；字段顺序来自契约，不受字典/行遍历顺序影响，`None` 经 `z:null` 编码后不会与空串或其它值混淆。
+  - 最小覆盖：声明 `per_stratum_min` 后，每个非空层先抽 `min(层大小, per_stratum_min)` 条，剩余名额再按原有份额分配补齐到目标样本量。
+  - 预算受限：若所有层的最小覆盖之和超过目标样本量，则按确定优先级做全局缩减——每次从当前抽得最多的层收回 1 个名额（并列时优先层规模大者，再按层键排序），且不把任何层减到 0；不会输出超过 `size` 的样本，也不会从末尾截断。
+  - 追溯：`details.strata[]` 逐层记录 `population`、`sample`、`minimum`（实际最小覆盖要求）、`undercoverage`（该层是否欠覆盖）；`details` 顶层另记 `per_stratum_min`、`budget_limited`、`undercoverage`、`undercoverage_strata`、`minimum_shortfall`。未声明 `per_stratum_min` 时这些字段不出现，保持旧报告字节稳定。
+  - 无法满足：目标样本量小于非空层数时抛出 `GS-SMP-001`，不做静默降级。
 - `reservoir`：单遍 Algorithm R；结果按原始行索引排序以保持输出稳定。
 
 样本结果记录 `method`、`seed`、请求量/实际量、行索引、样本记录号、层分配明细和 `sample_fingerprint`。同一输入、seed、方法、参数必须逐字节一致。

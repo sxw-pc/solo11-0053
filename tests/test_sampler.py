@@ -16,6 +16,26 @@ from gatesampler.sampler import (
 
 ROWS = [{"id": index, "region": ["north", "south", "east", "west"][index % 4]} for index in range(40)]
 
+CROSS_ROWS = [
+    {"region": "north", "status": "paid"},
+    {"region": "north", "status": "paid"},
+    {"region": "north", "status": "paid"},
+    {"region": "north", "status": "paid"},
+    {"region": "north", "status": "refunded"},
+    {"region": "north", "status": "refunded"},
+    {"region": "north", "status": "refunded"},
+    {"region": "south", "status": "paid"},
+    {"region": "south", "status": "paid"},
+    {"region": "south", "status": "pending"},
+    {"region": "east", "status": "cancelled"},
+    {"region": "east", "status": "refunded"},
+    {"region": "west", "status": "paid"},
+    {"region": "west", "status": "paid"},
+    {"region": "west", "status": "pending"},
+    {"region": "north", "status": "cancelled"},
+    {"region": None, "status": None},
+]
+
 
 def test_systematic_is_deterministic_bounded_and_seed_sensitive():
     first = systematic_indices(100, 10, 123)
@@ -87,3 +107,108 @@ def test_fraction_and_size_capping():
     assert result.size_actual == 10
     capped = sample_rows(ROWS[:3], SamplingSpec(method="reservoir", seed=1, size=50))
     assert capped.size_actual == 3
+
+
+def test_cross_strata_are_stable_and_none_safe():
+    first, details = stratified_indices(CROSS_ROWS, 16, 7, ["region", "status"])
+    keys = {row["stratum"] for row in details["strata"]}
+    # Reversing row order must not change stratum identities or the selection.
+    reordered, reordered_details = stratified_indices(
+        list(reversed(CROSS_ROWS)), 16, 7, ["region", "status"]
+    )
+    assert keys == {row["stratum"] for row in reordered_details["strata"]}
+    assert all(key.startswith('["s:') or key == '["z:null","z:null"]' for key in keys)
+    assert '["z:null","z:null"]' in keys
+    assert len(first) == len(reordered) == 16
+    assert first == stratified_indices(CROSS_ROWS, 16, 7, ["region", "status"])[0]
+
+
+def test_cross_strata_do_not_collide_across_field_values():
+    rows = [
+        {"a": "x", "b": "y"},
+        {"a": "x|y", "b": ""},
+        {"a": "x", "b": None},
+        {"a": "", "b": None},
+    ]
+    _, details = stratified_indices(rows, 4, 1, ["a", "b"])
+    keys = [row["stratum"] for row in details["strata"]]
+    assert len(keys) == len(set(keys)) == 4
+    assert keys == [
+        '["s:","z:null"]',
+        '["s:x","s:y"]',
+        '["s:x","z:null"]',
+        '["s:x|y","s:"]',
+    ]
+
+
+def test_per_stratum_min_covers_sparse_strata_then_fills_to_target():
+    indices, details = stratified_indices(
+        CROSS_ROWS, 16, 9, ["region", "status"], per_stratum_min=3
+    )
+    assert len(indices) == len(set(indices)) == 16
+    assert sum(row["sample"] for row in details["strata"]) == 16
+    for row in details["strata"]:
+        assert row["minimum"] == min(row["population"], 3)
+        assert row["sample"] <= row["population"]
+        assert row["sample"] >= row["minimum"]
+        assert row["undercoverage"] is False
+    assert details["undercoverage"] is False
+    assert details["minimum_shortfall"] == 0
+    assert details["budget_limited"] is False
+
+
+def test_per_stratum_min_exceeding_target_shrinks_globally_without_truncation():
+    indices, details = stratified_indices(
+        CROSS_ROWS, 11, 9, ["region", "status"], per_stratum_min=3
+    )
+    assert len(indices) == len(set(indices)) == 11
+    assert sum(row["sample"] for row in details["strata"]) == 11
+    assert details["undercoverage"] is True
+    assert details["budget_limited"] is True
+    assert details["minimum_shortfall"] == sum(
+        max(0, row["minimum"] - row["sample"]) for row in details["strata"]
+    )
+    undercovered = [row["stratum"] for row in details["strata"] if row["undercoverage"]]
+    assert details["undercoverage_strata"] == undercovered
+    # Reduction is deterministic for the same input and never empties a stratum.
+    assert all(row["sample"] >= 1 for row in details["strata"])
+    repeated = stratified_indices(CROSS_ROWS, 11, 9, ["region", "status"], per_stratum_min=3)
+    assert repeated == (indices, details)
+
+
+def test_per_stratum_min_feasible_when_sum_equals_target():
+    rows = [{"a": group, "b": str(index)} for group in ("x", "y", "z") for index in range(1)]
+    indices, details = stratified_indices(rows, 3, 5, ["a", "b"], per_stratum_min=1)
+    assert len(indices) == 3
+    assert details["undercoverage"] is False
+    assert details["budget_limited"] is False
+    assert all(row["sample"] == 1 for row in details["strata"])
+
+
+def test_target_smaller_than_cross_strata_fails_with_gs_smp_001():
+    with pytest.raises(GateSamplerError) as caught:
+        stratified_indices(CROSS_ROWS, 2, 9, ["region", "status"], per_stratum_min=2)
+    assert caught.value.code == "GS-SMP-001"
+
+
+def test_sample_rows_supports_cross_fields_and_minimum():
+    spec = SamplingSpec(
+        method="stratified",
+        seed=11,
+        size=16,
+        strata_field=("region", "status"),
+        per_stratum_min=2,
+    )
+    result = sample_rows(CROSS_ROWS, spec)
+    assert result.size_requested == 16
+    assert result.size_actual == 16
+    assert result.details["strata_field"] == ["region", "status"]
+    assert result.details["per_stratum_min"] == 2
+    assert result.details["undercoverage"] is False
+    assert sample_rows(CROSS_ROWS, spec) == result
+
+
+def test_single_field_details_keep_legacy_shape():
+    _, details = stratified_indices(ROWS, 20, 7, "region")
+    assert set(details) == {"strata"}
+    assert set(details["strata"][0]) == {"stratum", "population", "sample", "sample_indices"}

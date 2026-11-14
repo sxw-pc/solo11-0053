@@ -48,16 +48,33 @@ class SamplingSpec:
     seed: int
     size: int | None = None
     fraction: float | None = None
-    strata_field: str | None = None
+    # A single field name or an ordered tuple of field names for cross-stratification.
+    strata_field: str | tuple[str, ...] | None = None
+    per_stratum_min: int | None = None
+
+    @property
+    def strata_fields(self) -> tuple[str, ...]:
+        """Normalize ``strata_field`` into an ordered tuple of field names."""
+        if self.strata_field is None:
+            return ()
+        if isinstance(self.strata_field, str):
+            return (self.strata_field,)
+        return tuple(self.strata_field)
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        data: dict[str, Any] = {
             "method": self.method,
             "seed": self.seed,
             "size": self.size,
             "fraction": self.fraction,
-            "strata_field": self.strata_field,
+            "strata_field": (
+                list(self.strata_field) if isinstance(self.strata_field, tuple) else self.strata_field
+            ),
         }
+        # Keep historical snapshots/reports byte-identical when the feature is unused.
+        if self.per_stratum_min is not None:
+            data["per_stratum_min"] = self.per_stratum_min
+        return data
 
 
 @dataclass(frozen=True)

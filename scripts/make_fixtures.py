@@ -92,6 +92,36 @@ def batch_bad_rows() -> list[dict]:
     return rows
 
 
+def batch_cross_rows() -> list[dict]:
+    """A small batch with an uneven region×status cross and sparse strata.
+
+    Sixteen rows across nine non-empty (region, status) combinations, two of
+    which hold a single row each, plus one row whose fields are both null.
+    """
+    cells = [
+        ("north", "paid", 4),
+        ("north", "refunded", 3),
+        ("south", "paid", 2),
+        ("south", "pending", 1),
+        ("east", "cancelled", 1),
+        ("east", "refunded", 1),
+        ("west", "paid", 2),
+        ("west", "pending", 1),
+        ("north", "cancelled", 1),
+    ]
+    rows = []
+    for region, status, count in cells:
+        for _ in range(count):
+            index = len(rows) + 1
+            row = make_row("cross", index, region)
+            row["status"] = status
+            rows.append(row)
+    row = make_row("cross", len(rows) + 1, None)
+    row["status"] = None
+    rows.append(row)
+    return rows
+
+
 def write_csv(path: Path, rows: list[dict]) -> None:
     buffer = io.StringIO(newline="")
     writer = csv.DictWriter(buffer, fieldnames=COLUMNS, lineterminator="\n")
@@ -111,10 +141,12 @@ def main() -> None:
     write_csv(BATCHES / "batch_a.csv", batch_a_rows())
     write_jsonl(BATCHES / "batch_b.jsonl", batch_b_rows())
     write_csv(BATCHES / "batch_bad.csv", batch_bad_rows())
+    write_csv(BATCHES / "batch_cross.csv", batch_cross_rows())
     for path in (
         BATCHES / "batch_a.csv",
         BATCHES / "batch_b.jsonl",
         BATCHES / "batch_bad.csv",
+        BATCHES / "batch_cross.csv",
         BASELINE / "batch_base.csv",
     ):
         print(f"wrote {path.relative_to(ROOT).as_posix()}")

@@ -131,11 +131,44 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"| 样本 SHA-256 | `{sampling['sample_fingerprint']}` |",
         f"| 样本记录号 | {_text(sampling['sample_record_numbers'])} |",
         "",
-        "## 断言结果",
-        "",
-        "| 断言 | 类型 | 状态 | 指标 | 阈值 | 错误码 | 说明 |",
-        "| --- | --- | --- | --- | --- | --- | --- |",
     ]
+    details = sampling.get("details", {})
+    if details.get("per_stratum_min") is not None:
+        coverage = (
+            f"每层最小覆盖：`{details['per_stratum_min']}`；"
+            f"预算受限={_text(details.get('budget_limited'))}；"
+            f"欠覆盖={_text(details.get('undercoverage'))}；"
+            f"最小覆盖缺口={_text(details.get('minimum_shortfall'))}"
+        )
+        lines.extend(
+            [
+                "### 分层覆盖",
+                "",
+                coverage,
+                "",
+                "| 层 | 总体 | 抽样 | 最小覆盖 | 欠覆盖 |",
+                "| --- | ---: | ---: | ---: | --- |",
+            ]
+        )
+        for stratum in details.get("strata", []):
+            lines.append(
+                "| {key} | {population} | {sample} | {minimum} | {under} |".format(
+                    key=_text(stratum.get("stratum")),
+                    population=_text(stratum.get("population")),
+                    sample=_text(stratum.get("sample")),
+                    minimum=_text(stratum.get("minimum")),
+                    under="是" if stratum.get("undercoverage") else "否",
+                )
+            )
+        lines.append("")
+    lines.extend(
+        [
+            "## 断言结果",
+            "",
+            "| 断言 | 类型 | 状态 | 指标 | 阈值 | 错误码 | 说明 |",
+            "| --- | --- | --- | --- | --- | --- | --- |",
+        ]
+    )
     for assertion in report["assertions"]:
         lines.append(
             "| {id} | {type} | **{status}** | {metric} | {threshold} | `{code}` | {message} |".format(

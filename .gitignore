@@ -8,6 +8,7 @@ build/
 dist/
 out/
 out-strict/
+out-cross/
 *.sqlite3
 .coverage
 node_modules/

@@ -111,6 +111,20 @@ def parse_schema(raw: Any) -> SchemaSpec:
     return SchemaSpec(columns, allow_extra, tuple(tokens_raw))
 
 
+def parse_strata_field(raw: Any) -> str | tuple[str, ...]:
+    """Parse ``strata_field`` as one field name or an ordered list of field names."""
+    if isinstance(raw, list):
+        fields = strings(raw, "contract.sampling.strata_field", nonempty=True)
+        if len(set(fields)) != len(fields):
+            fail(
+                "GS-CFG-020",
+                "strata_field 列表不得包含重复字段",
+                "contract.sampling.strata_field",
+            )
+        return tuple(fields)
+    return text(raw, "contract.sampling.strata_field")
+
+
 def parse_sampling(raw: Any, schema: SchemaSpec) -> SamplingSpec:
     data = mapping(raw, "contract.sampling")
     method = text(data.get("method"), "contract.sampling.method").lower()
@@ -132,14 +146,38 @@ def parse_sampling(raw: Any, schema: SchemaSpec) -> SamplingSpec:
     )
     if fraction == 0:
         fail("GS-CFG-020", "fraction 必须大于 0", "contract.sampling.fraction")
-    strata = data.get("strata_field")
+    strata_raw = data.get("strata_field")
+    per_stratum_min = data.get("per_stratum_min")
     if method == "stratified":
-        strata = text(strata, "contract.sampling.strata_field")
-        if strata not in schema.columns:
-            fail("GS-CFG-020", f"分层字段未在 schema 中声明: {strata}", "contract.sampling.strata_field")
-    elif strata is not None:
-        fail("GS-CFG-020", "只有 stratified 可声明 strata_field", "contract.sampling.strata_field")
-    return SamplingSpec(method, seed, size, fraction, strata)
+        if strata_raw is None:
+            fail(
+                "GS-CFG-020",
+                "分层抽样缺少 strata_field",
+                "contract.sampling.strata_field",
+            )
+        strata = parse_strata_field(strata_raw)
+        for field_name in strata if isinstance(strata, tuple) else (strata,):
+            if field_name not in schema.columns:
+                fail(
+                    "GS-CFG-020",
+                    f"分层字段未在 schema 中声明: {field_name}",
+                    "contract.sampling.strata_field",
+                )
+        if per_stratum_min is not None:
+            per_stratum_min = integer(
+                per_stratum_min, "contract.sampling.per_stratum_min", minimum=1
+            )
+    else:
+        if strata_raw is not None:
+            fail("GS-CFG-020", "只有 stratified 可声明 strata_field", "contract.sampling.strata_field")
+        if per_stratum_min is not None:
+            fail(
+                "GS-CFG-020",
+                "只有 stratified 可声明 per_stratum_min",
+                "contract.sampling.per_stratum_min",
+            )
+        strata = None
+    return SamplingSpec(method, seed, size, fraction, strata, per_stratum_min)
 
 
 def validate_assertion_params(
