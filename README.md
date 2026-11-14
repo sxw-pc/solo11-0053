@@ -91,9 +91,23 @@ JSON 报告排序键固定、浮点统一舍入、无时间戳，因此同一输
 ```bash
 python -m gatesampler query --ledger out/gate_sampler.sqlite3 --decision review
 python -m gatesampler query --ledger out/gate_sampler.sqlite3 --batch-id batch_bad
+python -m gatesampler query --ledger out/gate_sampler.sqlite3 \
+  --batch-id batch_a --batch-id batch_b --created-from 2026-01-01 --created-to 2026-01-31
 python -m gatesampler replay --ledger out/gate_sampler.sqlite3 --run-id <run-id>
 python -m gatesampler replay --ledger out/gate_sampler.sqlite3 --batch-id batch_bad
 ```
+
+`query` 的过滤条件：
+
+| 选项 | 说明 |
+| --- | --- |
+| `--batch-id` | 可重复传入，取并集；页面输入框也接受逗号分隔 |
+| `--gate-id` / `--decision` | 单个精确匹配 |
+| `--created-from` / `--created-to` | `created_at` 闭区间；接受 ISO 日期（整天）或 UTC 时间，缺省时区按 UTC |
+| `--limit` | 每页条数，1–1000 |
+| `--cursor` | 上一页输出的 `下一页游标`，原样传回即可继续 |
+
+结果按 `created_at DESC, run_id DESC` 排序；`run_id` 是唯一主键，因此同一秒落账的多条判定仍保持确定顺序，跨页不会重复或遗漏。`决策计数` 与 `匹配总数` 均按当前过滤条件聚合，而不是全表；输出首行格式保持 `决策计数: pass=… block=… review=…` 不变。游标是包含排序键的透明字符串，无需手工解析。
 
 重放使用台账中的配置快照、显式 seed 和原始来源路径重新加载、抽样、断言与决策，并核对来源 SHA-256、样本指纹、决策、断言细节及报告 SHA-256；不一致时命令退出码为 `1`。判定 ID 由批次、来源哈希与配置指纹内容寻址生成，相同输入重复运行会幂等更新同一判定，不依赖隐式随机状态或当前时间。
 

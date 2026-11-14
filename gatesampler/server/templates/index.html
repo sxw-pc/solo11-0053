@@ -81,6 +81,9 @@
     .review { color: var(--review); }
     .muted { color: var(--muted); }
     .empty { padding: 45px 20px; text-align: center; color: var(--muted); }
+    .summary { margin: 0 0 14px; font-size: 13px; }
+    .pager { margin-top: 14px; }
+    .pager a { font-weight: 650; }
     footer { margin-top: 20px; color: var(--muted); font-size: 12px; }
     @media (max-width: 700px) {
       header { display: block; }
@@ -99,15 +102,16 @@
     <div class="local">● 仅限 127.0.0.1</div>
   </header>
 
-  <section class="cards" aria-label="决策统计">
+  <section class="cards" aria-label="决策统计（当前过滤结果）">
     <div class="card"><span>放行 pass</span><strong class="pass">{{ counts.pass }}</strong></div>
     <div class="card"><span>拦截 block</span><strong class="block">{{ counts.block }}</strong></div>
     <div class="card"><span>转人工 review</span><strong class="review">{{ counts.review }}</strong></div>
   </section>
+  <p class="sub summary">当前过滤条件匹配 <strong>{{ total }}</strong> 条判定；上方计数与下方列表使用同一组过滤条件。</p>
 
   <form class="filters" method="get" action="{{ url_for('index') }}">
-    <label>批次 ID
-      <input name="batch_id" value="{{ filters.batch_id }}" placeholder="batch_a">
+    <label>批次 ID（可多选）
+      <input name="batch_id" value="{{ filters.batch_id }}" placeholder="batch_a, batch_b">
     </label>
     <label>闸门 ID
       <input name="gate_id" value="{{ filters.gate_id }}" placeholder="orders_gate">
@@ -119,6 +123,12 @@
         <option value="block" {% if filters.decision == 'block' %}selected{% endif %}>block</option>
         <option value="review" {% if filters.decision == 'review' %}selected{% endif %}>review</option>
       </select>
+    </label>
+    <label>起始时间（created_at ≥）
+      <input name="created_from" value="{{ filters.created_from }}" placeholder="2026-01-01 或 2026-01-01T08:00:00">
+    </label>
+    <label>截止时间（created_at ≤）
+      <input name="created_to" value="{{ filters.created_to }}" placeholder="2026-01-31">
     </label>
     <button type="submit">筛选</button>
     <a class="reset" href="{{ url_for('index') }}">清除条件</a>
@@ -160,6 +170,12 @@
     </div>
     {% endif %}
   </section>
+
+  {% if next_url %}
+  <p class="pager"><a href="{{ next_url }}">下一页 →</a></p>
+  {% elif records %}
+  <p class="pager muted">已到最后一页。</p>
+  {% endif %}
 
   <footer>台账：<span class="mono">{{ ledger }}</span> · 只读界面 · 无 CDN · 无外部请求</footer>
 </main>

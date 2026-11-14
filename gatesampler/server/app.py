@@ -8,9 +8,10 @@ from urllib.parse import urlsplit
 
 from flask import Flask, Response, g, redirect, render_template, request, url_for
 
-from ..ledger import decision_counts, get_judgment, init_db, list_judgments
+from ..ledger import get_judgment, init_db, list_judgments
 
 ALLOWED_HOSTS = {"127.0.0.1", "localhost", "::1"}
+PAGE_SIZE = 200
 LOCAL_REFUSAL = "GateSampler 是仅限本机的只读审计界面。\n请求 Host 不是回环地址，已拒绝访问。\n"
 
 
@@ -63,19 +64,57 @@ def create_app(
 
     @app.get("/")
     def index():
-        batch_id = request.args.get("batch_id") or None
+        batch_values: list[str] = []
+        for raw in request.args.getlist("batch_id"):
+            batch_values.extend(part.strip() for part in raw.split(","))
+        batch_ids = tuple(dict.fromkeys(item for item in batch_values if item))
         gate_id = request.args.get("gate_id") or None
         decision = request.args.get("decision") or None
         if decision not in {None, "pass", "block", "review"}:
             decision = None
-        records = list_judgments(
-            db(), batch_id=batch_id, gate_id=gate_id, decision=decision, limit=200
-        )
+        created_from = request.args.get("created_from") or None
+        created_to = request.args.get("created_to") or None
+        cursor = request.args.get("cursor") or None
+        filters = {
+            "batch_id": ", ".join(batch_ids),
+            "gate_id": gate_id or "",
+            "decision": decision or "",
+            "created_from": created_from or "",
+            "created_to": created_to or "",
+        }
+        try:
+            page = list_judgments(
+                db(),
+                batch_ids=batch_ids,
+                gate_id=gate_id,
+                decision=decision,
+                created_from=created_from,
+                created_to=created_to,
+                limit=PAGE_SIZE,
+                cursor=cursor,
+            )
+        except ValueError as error:
+            return Response(f"{error}\n", status=400, mimetype="text/plain")
+        next_url = None
+        if page.next_cursor is not None:
+            next_args = {
+                "batch_id": filters["batch_id"],
+                "gate_id": gate_id,
+                "decision": decision,
+                "created_from": created_from,
+                "created_to": created_to,
+                "cursor": page.next_cursor,
+            }
+            next_url = url_for(
+                "index", **{key: value for key, value in next_args.items() if value}
+            )
         return render_template(
             "index.html",
-            records=records,
-            counts=decision_counts(db()),
-            filters={"batch_id": batch_id or "", "gate_id": gate_id or "", "decision": decision or ""},
+            records=page.records,
+            counts=page.counts,
+            total=page.total,
+            next_url=next_url,
+            filters=filters,
             ledger=app.config["LEDGER_PATH"],
         )
 

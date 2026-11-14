@@ -11,7 +11,7 @@ import click
 from . import __version__
 from .config import load_run_config
 from .errors import GateSamplerError
-from .ledger import decision_counts, init_db, list_judgments
+from .ledger import init_db, list_judgments
 from .replay import replay_judgment
 from .runner import run_config
 
@@ -118,52 +118,91 @@ def replay_command(
     show_default=True,
     help="SQLite 台账路径。",
 )
-@click.option("--batch-id", help="按批次 ID 过滤。")
+@click.option(
+    "--batch-id",
+    "batch_ids",
+    multiple=True,
+    help="按批次 ID 过滤；可重复传入多个，取并集。",
+)
 @click.option("--gate-id", help="按闸门 ID 过滤。")
 @click.option("--decision", type=click.Choice(["pass", "block", "review"]), help="按决策过滤。")
-@click.option("--limit", type=click.IntRange(1, 1000), default=50, show_default=True)
+@click.option(
+    "--created-from",
+    help="created_at 下界（含），ISO 日期或时间（UTC）；仅日期时从当日 00:00:00 起。",
+)
+@click.option(
+    "--created-to",
+    help="created_at 上界（含），ISO 日期或时间（UTC）；仅日期时含当日 23:59:59。",
+)
+@click.option("--limit", type=click.IntRange(1, 1000), default=50, show_default=True, help="每页条数。")
+@click.option("--cursor", help="上一页输出的下一页游标；再次传入以继续翻页。")
 @click.option("--json", "as_json", is_flag=True, help="输出 JSON。")
 @click.pass_context
 def query_command(
     ctx: click.Context,
     ledger: Path,
-    batch_id: str | None,
+    batch_ids: tuple[str, ...],
     gate_id: str | None,
     decision: str | None,
+    created_from: str | None,
+    created_to: str | None,
     limit: int,
+    cursor: str | None,
     as_json: bool,
 ) -> None:
-    """查询台账中的判定记录。"""
+    """查询台账中的判定记录，按稳定游标分页。"""
     try:
         connection = init_db(ledger)
         try:
-            rows = list_judgments(
+            page = list_judgments(
                 connection,
-                batch_id=batch_id,
+                batch_ids=batch_ids,
                 gate_id=gate_id,
                 decision=decision,
+                created_from=created_from,
+                created_to=created_to,
                 limit=limit,
+                cursor=cursor,
             )
-            totals = decision_counts(connection)
         finally:
             connection.close()
+    except ValueError as error:
+        raise click.UsageError(str(error)) from error
     except (OSError, sqlite3.Error) as error:  # pragma: no cover - defensive
         _fail(ctx, GateSamplerError("GS-LGR-004", f"无法查询台账: {error}", str(ledger)))
         return
+    totals = page.counts
     if as_json:
-        click.echo(json.dumps({"judgments": rows, "counts": totals}, ensure_ascii=False, indent=2, default=str))
+        click.echo(
+            json.dumps(
+                {
+                    "judgments": page.records,
+                    "counts": totals,
+                    "total": page.total,
+                    "next_cursor": page.next_cursor,
+                },
+                ensure_ascii=False,
+                indent=2,
+                default=str,
+            )
+        )
         return
     click.echo(f"决策计数: pass={totals['pass']} block={totals['block']} review={totals['review']}")
-    if not rows:
+    click.echo(f"匹配总数: {page.total}")
+    if not page.records:
         click.echo("没有匹配记录。")
         return
     click.echo(f"{'run_id':<28} {'batch_id':<18} {'decision':<8} f/w/s  report_sha256")
-    for row in rows:
+    for row in page.records:
         click.echo(
             f"{row['run_id']:<28} {row['batch_id']:<18} {row['decision']:<8} "
             f"{row['fail_count']}/{row['warn_count']}/{row['skip_count']}  "
             f"{row['report_sha256'][:16]}"
         )
+    if page.next_cursor is not None:
+        click.echo(f"下一页游标: {page.next_cursor}")
+    else:
+        click.echo("没有更多记录。")
 
 
 @main.command("serve")
