@@ -8,7 +8,9 @@ from typing import Any
 
 from .config_model import (
     COLUMN_TYPES,
+    DEFAULT_DRIFT_METRIC,
     DEFAULT_NULL_TOKENS,
+    DRIFT_METRICS,
     GUARD_TYPES,
     SAMPLING_METHODS,
     AssertionSpec,
@@ -205,11 +207,19 @@ def validate_assertion_params(
         check_keys(params, {"column", "baseline", "threshold", "bins", "metric"}, location)
         column("column")
         text(params.get("baseline"), f"{location}.baseline")
-        number(params.get("threshold"), f"{location}.threshold", low=0.0, high=1.0)
+        metric = params.get("metric", DEFAULT_DRIFT_METRIC)
+        if not isinstance(metric, str) or metric not in DRIFT_METRICS:
+            fail(
+                "GS-CFG-030",
+                f"未知漂移度量: {metric}，仅支持 {', '.join(sorted(DRIFT_METRICS))}",
+                f"{location}.metric",
+            )
+        if metric == "chi_square":
+            number(params.get("threshold"), f"{location}.threshold", low=0.0)
+        else:
+            number(params.get("threshold"), f"{location}.threshold", low=0.0, high=1.0)
         if "bins" in params:
             integer(params["bins"], f"{location}.bins", minimum=2)
-        if params.get("metric", "max_share_delta") != "max_share_delta":
-            fail("GS-CFG-030", "目前只支持 max_share_delta", f"{location}.metric")
 
 
 def parse_assertions(raw: Any, schema: SchemaSpec) -> tuple[AssertionSpec, ...]:

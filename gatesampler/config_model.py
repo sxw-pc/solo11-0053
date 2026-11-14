@@ -11,6 +11,8 @@ CONTRACT_VERSIONS = frozenset({"1.0"})
 COLUMN_TYPES = frozenset({"int", "float", "bool", "str", "date"})
 SAMPLING_METHODS = frozenset({"systematic", "stratified", "reservoir"})
 GUARD_TYPES = frozenset({"count", "unique", "domain", "range", "nullrate", "duplicate", "drift"})
+DRIFT_METRICS = frozenset({"max_share_delta", "total_variation", "chi_square"})
+DEFAULT_DRIFT_METRIC = "max_share_delta"
 DEFAULT_NULL_TOKENS = ("", "NULL", "null", "NA", "N/A", "None")
 
 

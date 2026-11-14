@@ -136,7 +136,13 @@ decision:
 | `range` | `column`，以及 `min`/`max`/`min_length`/`max_length` 至少一项 | 数值边界包含端点；长度按 `str(value)` 计算；非数值计入违规 |
 | `nullrate` | `column`、`max_rate`（0–1） | 样本空值数/样本量；恰好等于阈值视为通过 |
 | `duplicate` | `columns`、`max_rate`（0–1） | 样本内重复率 = (总行数−不同组合数)/总行数；`None` 视为一个取值 |
-| `drift` | `column`、`baseline`、`threshold`（0–1）；可选 `bins`、`metric` | 样本与基线的一阶分布最大绝对占比差；分类字段含 `<null>`，数值字段按基线范围固定分箱频次；当前 `metric` 仅支持 `max_share_delta` |
+| `drift` | `column`、`baseline`、`threshold`；可选 `bins`、`metric`（默认 `max_share_delta`） | 样本与基线的一阶分布差异；分类字段含 `<null>`，数值字段按基线范围固定分箱频次。`max_share_delta`/`total_variation` 的 `threshold` 取 0–1；`chi_square` 的 `threshold` 为卡方统计量，仅要求非负 |
+
+`drift` 支持三种 `metric`：
+
+- `max_share_delta`（默认）：各类/箱占比绝对差的最大值，阈值是占比差，量纲 0–1。
+- `total_variation`：总变差距离，即各类/箱占比绝对差之和除以 2，复用同一组 `top_deltas`；阈值量纲同为 0–1，语义为整列分布层面的总偏移而非单类偏移。
+- `chi_square`：Pearson 卡方统计量，按基线期望频次做低频箱合并——期望频次低于 5 的箱按自然顺序并入相邻箱（数值列按箱下标、分类列按标签顺序，最末欠频箱回并到前一箱）；样本总量与基线总量不同时，期望频次按样本总数缩放。数值列基线只有单一取值（`high == low`）的退化分箱会被确定性地折叠为单个 `degenerate_bin`，自由度记为 0。合并后的箱集合（`bins`）、`degrees_of_freedom`、各箱 `expected_frequency` 与 `chi_square_contribution` 均写入 `evidence` 供复核；未知 `metric` 以 `GS-CFG-030` 拒绝。
 
 `drift` 基线是本地 CSV/JSONL，使用同一 schema 加载；基线缺失时断言在独立调用中返回 `skip`，完整运行时由运行器报告 `GS-LOAD-001`，避免静默忽略审计依赖。
 
