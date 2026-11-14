@@ -133,7 +133,7 @@ decision:
 | `count` | 可选 `expected`、`tolerance`（默认 0） | 实际批次行数对比 `expected`，未给则用批次的 `expected_rows`；只读批次元数据 |
 | `unique` | `columns` 非空列表；`full_scan` 布尔 | 主键组合唯一；先查样本。`full_scan: true` 时显式退回全量，这是唯一允许全表扫描的断言；不开启时证据明确说明样本不能证明整批唯一 |
 | `domain` | `column`、`allowed` 非空标量列表 | 样本中非空值必须属于集合；空值由 nullrate 负责 |
-| `range` | `column`，以及 `min`/`max`/`min_length`/`max_length` 至少一项 | 数值边界包含端点；长度按 `str(value)` 计算；非数值计入违规 |
+| `range` | `column`，以及 `min`/`max`/`min_length`/`max_length` 至少一项；可选 `min_inclusive`/`max_inclusive` | 数值边界默认包含端点，可用 `min_inclusive`/`max_inclusive` 改为开区间（不得与长度参数混用）；`date` 列按 loader 归一后的 ISO 日期串比较，`min`/`max` 须为 ISO 日期串；长度按 `str(value)` 计算，与边界各自独立生效；不可参与比较的值不计入违规，单独计入 `not_comparable` |
 | `nullrate` | `column`、`max_rate`（0–1） | 样本空值数/样本量；恰好等于阈值视为通过 |
 | `duplicate` | `columns`、`max_rate`（0–1） | 样本内重复率 = (总行数−不同组合数)/总行数；`None` 视为一个取值 |
 | `drift` | `column`、`baseline`、`threshold`（0–1）；可选 `bins`、`metric` | 样本与基线的一阶分布最大绝对占比差；分类字段含 `<null>`，数值字段按基线范围固定分箱频次；当前 `metric` 仅支持 `max_share_delta` |

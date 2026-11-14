@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -64,6 +65,15 @@ def boolean(value: Any, location: str) -> bool:
     if not isinstance(value, bool):
         fail("GS-CFG-004", "期望布尔值", location)
     return value
+
+
+def iso_date(value: Any, location: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        fail("GS-CFG-004", "期望 ISO 日期字符串", location)
+    try:
+        return date.fromisoformat(value.strip()).isoformat()
+    except ValueError:
+        fail("GS-CFG-004", "期望 ISO 日期字符串", location)
 
 
 def strings(value: Any, location: str, *, nonempty: bool) -> list[str]:
@@ -173,18 +183,43 @@ def validate_assertion_params(
         ):
             fail("GS-CFG-030", "allowed 必须是非空标量列表", f"{location}.allowed")
     elif kind == "range":
-        check_keys(params, {"column", "min", "max", "min_length", "max_length"}, location)
-        column("column")
+        check_keys(
+            params,
+            {"column", "min", "max", "min_length", "max_length", "min_inclusive", "max_inclusive"},
+            location,
+        )
+        column_name = column("column")
         if not any(key in params for key in ("min", "max", "min_length", "max_length")):
             fail("GS-CFG-030", "range 至少需要一个边界", location)
+        column_type = schema.columns[column_name].type
         for key in ("min", "max"):
             if key in params:
-                number(params[key], f"{location}.{key}")
+                if column_type == "date":
+                    iso_date(params[key], f"{location}.{key}")
+                else:
+                    number(params[key], f"{location}.{key}")
         for key in ("min_length", "max_length"):
             if key in params:
                 integer(params[key], f"{location}.{key}", minimum=0)
-        if "min" in params and "max" in params and params["min"] > params["max"]:
-            fail("GS-CFG-030", "min 不得大于 max", location)
+        for key in ("min_inclusive", "max_inclusive"):
+            if key in params:
+                boolean(params[key], f"{location}.{key}")
+        if any(key in params for key in ("min_inclusive", "max_inclusive")) and any(
+            key in params for key in ("min_length", "max_length")
+        ):
+            fail(
+                "GS-CFG-030",
+                "min_inclusive/max_inclusive 不能与 min_length/max_length 混用",
+                location,
+            )
+        if "min" in params and "max" in params:
+            lower: Any = params["min"]
+            upper: Any = params["max"]
+            if column_type == "date":
+                lower = date.fromisoformat(lower.strip())
+                upper = date.fromisoformat(upper.strip())
+            if lower > upper:
+                fail("GS-CFG-030", "min 不得大于 max", location)
         if (
             "min_length" in params
             and "max_length" in params

@@ -88,6 +88,139 @@ def test_range_guard_numeric_length_warn_and_skip():
     assert evaluate("range", column="value", min=0, sample=[None]).status == "skip"
 
 
+def test_range_guard_inclusive_switches_default_closed():
+    closed = evaluate("range", column="value", min=1, max=3, sample=[1, 3])
+    assert closed.status == "pass"
+    assert "min_inclusive" not in closed.evidence
+    assert "compare_type" not in closed.evidence
+    opened = evaluate("range", column="value", min=1, min_inclusive=False, sample=[1, 2])
+    assert opened.status == "fail"
+    assert opened.evidence["violations"] == [
+        {"record_no": 1, "value": 1, "reasons": ["below_min"]}
+    ]
+    assert opened.evidence["compare_type"] == "number"
+    assert opened.evidence["min_inclusive"] is False
+    assert opened.evidence["max_inclusive"] is True
+    assert opened.threshold == {"min": 1, "min_inclusive": False}
+    opened_max = evaluate("range", column="value", max=3, max_inclusive=False, sample=[2, 3])
+    assert opened_max.status == "fail"
+    assert opened_max.evidence["violations"][0]["reasons"] == ["above_max"]
+    interior = evaluate(
+        "range",
+        column="value",
+        min=1,
+        max=3,
+        min_inclusive=False,
+        max_inclusive=False,
+        sample=[2],
+    )
+    assert interior.status == "pass"
+
+
+def test_range_guard_date_column_dispatches_iso_comparison():
+    passed = evaluate(
+        "range",
+        column="value",
+        min="2024-01-01",
+        max="2024-01-31",
+        sample=["2024-01-01", "2024-01-31"],
+        column_types={"value": "date"},
+    )
+    assert passed.status == "pass"
+    assert passed.evidence["compare_type"] == "date"
+    assert passed.evidence["min_inclusive"] is True
+    assert passed.evidence["max_inclusive"] is True
+    failed = evaluate(
+        "range",
+        column="value",
+        min="2024-01-01",
+        max="2024-01-31",
+        sample=["2023-12-31", "2024-02-01"],
+        column_types={"value": "date"},
+    )
+    assert failed.status == "fail"
+    reasons = [item["reasons"] for item in failed.evidence["violations"]]
+    assert reasons == [["below_min"], ["above_max"]]
+    opened = evaluate(
+        "range",
+        column="value",
+        min="2024-01-01",
+        min_inclusive=False,
+        sample=["2024-01-01", "2024-01-02"],
+        column_types={"value": "date"},
+    )
+    assert opened.status == "fail"
+    assert opened.evidence["violations"][0]["value"] == "2024-01-01"
+
+
+def test_range_guard_not_comparable_excluded_from_violations():
+    result = evaluate("range", column="value", min=0, max=10, sample=[5, "N/A", None, True])
+    assert result.status == "pass"
+    assert result.metric == 0
+    assert result.evidence["checked"] == 3
+    assert result.evidence["violation_count"] == 0
+    assert result.evidence["not_comparable"] == 2
+    assert result.evidence["non_numeric"] == 2
+    assert result.evidence["not_comparable_samples"] == [
+        {"record_no": 2, "value": "N/A"},
+        {"record_no": 4, "value": True},
+    ]
+    assert result.evidence["rows"] == []
+    assert "不可比较" in result.message
+
+
+def test_range_guard_not_comparable_with_real_violations():
+    result = evaluate("range", column="value", min=0, sample=[-1, "N/A"])
+    assert result.status == "fail"
+    assert result.metric == 1
+    assert result.evidence["violation_count"] == 1
+    assert result.evidence["not_comparable"] == 1
+    assert result.evidence["violations"][0]["reasons"] == ["below_min"]
+    assert "不可比较" in result.message
+
+
+def test_range_guard_all_values_not_comparable_skips():
+    result = evaluate("range", column="value", min=0, sample=["N/A", "void"])
+    assert result.status == "skip"
+    assert result.evidence["not_comparable"] == 2
+    assert result.evidence["checked"] == 2
+
+
+def test_range_guard_date_column_residue_not_comparable():
+    result = evaluate(
+        "range",
+        column="value",
+        min="2024-01-01",
+        sample=["2024-01-02", "not-a-date", 20240102],
+        column_types={"value": "date"},
+    )
+    assert result.status == "pass"
+    assert result.evidence["compare_type"] == "date"
+    assert result.evidence["not_comparable"] == 2
+    assert "non_numeric" not in result.evidence
+    assert result.evidence["not_comparable_samples"][0]["value"] == "not-a-date"
+
+
+def test_range_guard_date_min_and_min_length_apply_independently():
+    result = evaluate(
+        "range",
+        column="value",
+        min="2024-01-01",
+        min_length=10,
+        sample=["2024-01-05", "2023-12-31", "2024-01-1"],
+        column_types={"value": "date"},
+    )
+    assert result.status == "fail"
+    assert result.threshold["min"] == "2024-01-01"
+    assert result.threshold["min_length"] == 10
+    assert result.evidence["compare_type"] == "date"
+    assert result.evidence["violations"] == [
+        {"record_no": 2, "value": "2023-12-31", "reasons": ["below_min"]},
+        {"record_no": 3, "value": "2024-01-1", "reasons": ["shorter_than_min_length"]},
+    ]
+    assert result.evidence["not_comparable"] == 1
+
+
 def test_nullrate_guard_boundary_fail_warn_skip():
     assert evaluate("nullrate", column="value", max_rate=0.5, sample=[1, None]).status == "pass"
     failed = evaluate("nullrate", column="value", max_rate=0.2, sample=[1, None])

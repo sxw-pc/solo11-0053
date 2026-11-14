@@ -91,6 +91,94 @@ def test_invalid_range_bound(config_factory, base_contract):
     assert_code("GS-CFG-030", lambda: load_run_config(path))
 
 
+def _range_spec(contract: dict) -> dict:
+    return next(item for item in contract["assertions"] if item["id"] == "amount_bounds")
+
+
+def _with_date_range(base_contract: dict) -> dict:
+    contract = copy.deepcopy(base_contract)
+    contract["assertions"].append(
+        {
+            "id": "created_at_window",
+            "type": "range",
+            "column": "created_at",
+            "min": "2024-01-01",
+            "max": "2024-12-31",
+        }
+    )
+    return contract
+
+
+def test_range_inclusive_switches_accepted(config_factory, base_contract):
+    contract = copy.deepcopy(base_contract)
+    _range_spec(contract)["min_inclusive"] = False
+    _range_spec(contract)["max_inclusive"] = True
+    path = config_factory(contract=contract)
+    config = load_run_config(path)
+    spec = next(item for item in config.contract.assertions if item.assertion_id == "amount_bounds")
+    assert spec.get("min_inclusive") is False
+    assert spec.get("max_inclusive") is True
+
+
+def test_range_inclusive_switch_must_be_boolean(config_factory, base_contract):
+    contract = copy.deepcopy(base_contract)
+    _range_spec(contract)["min_inclusive"] = "yes"
+    path = config_factory(contract=contract)
+    assert_code("GS-CFG-004", lambda: load_run_config(path))
+
+
+def test_range_inclusive_switch_rejects_length_mix(config_factory, base_contract):
+    contract = copy.deepcopy(base_contract)
+    _range_spec(contract)["max_inclusive"] = False
+    _range_spec(contract)["min_length"] = 2
+    path = config_factory(contract=contract)
+    assert_code("GS-CFG-030", lambda: load_run_config(path))
+
+
+def test_range_unknown_parameter_still_rejected(config_factory, base_contract):
+    contract = copy.deepcopy(base_contract)
+    _range_spec(contract)["min_inclusiv"] = False
+    path = config_factory(contract=contract)
+    assert_code("GS-CFG-030", lambda: load_run_config(path))
+
+
+def test_range_date_column_bounds_accepted(config_factory, base_contract):
+    path = config_factory(contract=_with_date_range(base_contract))
+    config = load_run_config(path)
+    spec = next(item for item in config.contract.assertions if item.assertion_id == "created_at_window")
+    assert spec.get("min") == "2024-01-01"
+    assert spec.get("max") == "2024-12-31"
+
+
+def test_range_date_column_rejects_numeric_bounds(config_factory, base_contract):
+    contract = _with_date_range(base_contract)
+    contract["assertions"][-1]["min"] = 0
+    path = config_factory(contract=contract)
+    assert_code("GS-CFG-004", lambda: load_run_config(path))
+
+
+def test_range_date_column_rejects_bad_date_string(config_factory, base_contract):
+    contract = _with_date_range(base_contract)
+    contract["assertions"][-1]["max"] = "not-a-date"
+    path = config_factory(contract=contract)
+    assert_code("GS-CFG-004", lambda: load_run_config(path))
+
+
+def test_range_date_column_min_after_max_rejected(config_factory, base_contract):
+    contract = _with_date_range(base_contract)
+    contract["assertions"][-1]["min"] = "2024-12-31"
+    contract["assertions"][-1]["max"] = "2024-01-01"
+    path = config_factory(contract=contract)
+    assert_code("GS-CFG-030", lambda: load_run_config(path))
+
+
+def test_range_numeric_column_rejects_string_bounds(config_factory, base_contract):
+    contract = copy.deepcopy(base_contract)
+    _range_spec(contract)["min"] = "2024-01-01"
+    path = config_factory(contract=contract)
+    assert_code("GS-CFG-004", lambda: load_run_config(path))
+
+
 def test_undeclared_guard_column(config_factory, base_contract):
     contract = copy.deepcopy(base_contract)
     contract["assertions"][2]["column"] = "no_such_column"
