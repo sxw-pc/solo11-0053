@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
-from .base import Guard, GuardContext, GuardResult, round_metric
+from .base import Guard, GuardContext, GuardResult, ParamSpec, round_metric
 
 
 class NullRateGuard(Guard):
     type_name = "nullrate"
     code = "GS-GATE-105"
+    param_schema = (
+        ParamSpec("column", "column", required=True),
+        ParamSpec("max_rate", "number", required=True, minimum=0.0, maximum=1.0),
+    )
 
     def evaluate(self, context: GuardContext) -> GuardResult:
         column = self.spec.get("column")

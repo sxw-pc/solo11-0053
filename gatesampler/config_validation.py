@@ -1,4 +1,9 @@
-"""Validation helpers for contracts and batch declarations."""
+"""Validation helpers for contracts and batch declarations.
+
+Assertion parameter validation is owned by the guards themselves: each guard
+declares its ``param_schema`` and this module only dispatches through the
+single ordered registry in :mod:`gatesampler.assertions`.
+"""
 
 from __future__ import annotations
 
@@ -6,10 +11,18 @@ import re
 from pathlib import Path
 from typing import Any
 
+from .assertions import GUARD_TYPES
+from .assertions import validate_assertion_params as _validate_assertion_params
+from .assertions.base import (  # re-exported for the public config API
+    boolean,
+    fail,
+    integer,
+    number,
+    text,
+)
 from .config_model import (
     COLUMN_TYPES,
     DEFAULT_NULL_TOKENS,
-    GUARD_TYPES,
     SAMPLING_METHODS,
     AssertionSpec,
     BatchSpec,
@@ -18,64 +31,14 @@ from .config_model import (
     SamplingSpec,
     SchemaSpec,
 )
-from .errors import GateSamplerError
 
 _ID_RE = re.compile(r"^[a-z][a-z0-9_]{2,63}$")
-
-
-def fail(code: str, message: str, location: str) -> None:
-    raise GateSamplerError(code, message, location)
 
 
 def mapping(value: Any, location: str, code: str = "GS-CFG-004") -> dict[str, Any]:
     if not isinstance(value, dict):
         fail(code, "期望映射（object）结构", location)
     return value
-
-
-def text(value: Any, location: str, *, nonempty: bool = True) -> str:
-    if not isinstance(value, str) or (nonempty and not value.strip()):
-        fail("GS-CFG-003", "缺少或非法字符串字段", location)
-    return value.strip()
-
-
-def integer(value: Any, location: str, *, minimum: int | None = None) -> int:
-    if isinstance(value, bool) or not isinstance(value, int):
-        fail("GS-CFG-004", "期望整数", location)
-    if minimum is not None and value < minimum:
-        fail("GS-CFG-004", f"整数不得小于 {minimum}", location)
-    return value
-
-
-def number(
-    value: Any, location: str, *, low: float | None = None, high: float | None = None
-) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        fail("GS-CFG-004", "期望数值", location)
-    result = float(value)
-    if low is not None and result < low:
-        fail("GS-CFG-004", f"数值不得小于 {low}", location)
-    if high is not None and result > high:
-        fail("GS-CFG-004", f"数值不得大于 {high}", location)
-    return result
-
-
-def boolean(value: Any, location: str) -> bool:
-    if not isinstance(value, bool):
-        fail("GS-CFG-004", "期望布尔值", location)
-    return value
-
-
-def strings(value: Any, location: str, *, nonempty: bool) -> list[str]:
-    if not isinstance(value, list) or (nonempty and not value):
-        fail("GS-CFG-004", "期望非空字符串列表" if nonempty else "期望字符串列表", location)
-    return [text(item, f"{location}[{index}]") for index, item in enumerate(value)]
-
-
-def check_keys(data: dict[str, Any], allowed: set[str], location: str) -> None:
-    unknown = sorted(set(data) - allowed)
-    if unknown:
-        fail("GS-CFG-030", f"未知断言参数: {', '.join(unknown)}", location)
 
 
 def parse_column(name: str, raw: Any, location: str) -> ColumnSpec:
@@ -145,71 +108,8 @@ def parse_sampling(raw: Any, schema: SchemaSpec) -> SamplingSpec:
 def validate_assertion_params(
     kind: str, params: dict[str, Any], location: str, schema: SchemaSpec
 ) -> None:
-    def column(name: str) -> str:
-        value = text(params.get(name), f"{location}.{name}")
-        if value not in schema.columns:
-            fail("GS-CFG-030", f"字段未在 schema 中声明: {value}", f"{location}.{name}")
-        return value
-
-    if kind == "count":
-        check_keys(params, {"expected", "tolerance"}, location)
-        if "expected" in params:
-            integer(params["expected"], f"{location}.expected", minimum=0)
-        if "tolerance" in params:
-            integer(params["tolerance"], f"{location}.tolerance", minimum=0)
-    elif kind == "unique":
-        check_keys(params, {"columns", "full_scan"}, location)
-        for item in strings(params.get("columns"), f"{location}.columns", nonempty=True):
-            if item not in schema.columns:
-                fail("GS-CFG-030", f"字段未在 schema 中声明: {item}", f"{location}.columns")
-        if "full_scan" in params:
-            boolean(params["full_scan"], f"{location}.full_scan")
-    elif kind == "domain":
-        check_keys(params, {"column", "allowed"}, location)
-        column("column")
-        allowed = params.get("allowed")
-        if not isinstance(allowed, list) or not allowed or any(
-            isinstance(value, (dict, list)) for value in allowed
-        ):
-            fail("GS-CFG-030", "allowed 必须是非空标量列表", f"{location}.allowed")
-    elif kind == "range":
-        check_keys(params, {"column", "min", "max", "min_length", "max_length"}, location)
-        column("column")
-        if not any(key in params for key in ("min", "max", "min_length", "max_length")):
-            fail("GS-CFG-030", "range 至少需要一个边界", location)
-        for key in ("min", "max"):
-            if key in params:
-                number(params[key], f"{location}.{key}")
-        for key in ("min_length", "max_length"):
-            if key in params:
-                integer(params[key], f"{location}.{key}", minimum=0)
-        if "min" in params and "max" in params and params["min"] > params["max"]:
-            fail("GS-CFG-030", "min 不得大于 max", location)
-        if (
-            "min_length" in params
-            and "max_length" in params
-            and params["min_length"] > params["max_length"]
-        ):
-            fail("GS-CFG-030", "min_length 不得大于 max_length", location)
-    elif kind == "nullrate":
-        check_keys(params, {"column", "max_rate"}, location)
-        column("column")
-        number(params.get("max_rate"), f"{location}.max_rate", low=0.0, high=1.0)
-    elif kind == "duplicate":
-        check_keys(params, {"columns", "max_rate"}, location)
-        for item in strings(params.get("columns"), f"{location}.columns", nonempty=True):
-            if item not in schema.columns:
-                fail("GS-CFG-030", f"字段未在 schema 中声明: {item}", f"{location}.columns")
-        number(params.get("max_rate"), f"{location}.max_rate", low=0.0, high=1.0)
-    elif kind == "drift":
-        check_keys(params, {"column", "baseline", "threshold", "bins", "metric"}, location)
-        column("column")
-        text(params.get("baseline"), f"{location}.baseline")
-        number(params.get("threshold"), f"{location}.threshold", low=0.0, high=1.0)
-        if "bins" in params:
-            integer(params["bins"], f"{location}.bins", minimum=2)
-        if params.get("metric", "max_share_delta") != "max_share_delta":
-            fail("GS-CFG-030", "目前只支持 max_share_delta", f"{location}.metric")
+    """Dispatch to the guard's own declaration; no per-type logic lives here."""
+    _validate_assertion_params(kind, params, location, schema)
 
 
 def parse_assertions(raw: Any, schema: SchemaSpec) -> tuple[AssertionSpec, ...]:

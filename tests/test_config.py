@@ -91,6 +91,64 @@ def test_invalid_range_bound(config_factory, base_contract):
     assert_code("GS-CFG-030", lambda: load_run_config(path))
 
 
+@pytest.mark.parametrize(
+    ("mutation", "expected_code", "expected_location"),
+    [
+        # count: unknown key -> GS-CFG-030 at the assertion itself
+        (
+            lambda contract: contract["assertions"][0].update({"unexpected": 1}),
+            "GS-CFG-030",
+            "contract.assertions[0]",
+        ),
+        # unique: undeclared schema column -> GS-CFG-030 at the columns field
+        (
+            lambda contract: contract["assertions"][1].update({"columns": ["no_such_column"]}),
+            "GS-CFG-030",
+            "contract.assertions[1].columns",
+        ),
+        # domain: empty allowed list -> GS-CFG-030 at the allowed field
+        (
+            lambda contract: contract["assertions"][2].update({"allowed": []}),
+            "GS-CFG-030",
+            "contract.assertions[2].allowed",
+        ),
+        # range: no boundary declared -> GS-CFG-030 at the assertion itself
+        (
+            lambda contract: [
+                contract["assertions"][3].pop(key, None)
+                for key in ("min", "max", "min_length", "max_length")
+            ],
+            "GS-CFG-030",
+            "contract.assertions[3]",
+        ),
+        # nullrate: missing required max_rate -> GS-CFG-004 at the field
+        (
+            lambda contract: contract["assertions"][4].pop("max_rate"),
+            "GS-CFG-004",
+            "contract.assertions[4].max_rate",
+        ),
+        # drift: unsupported metric -> GS-CFG-030 at the metric field
+        (
+            lambda contract: contract["assertions"][6].update({"metric": "psi"}),
+            "GS-CFG-030",
+            "contract.assertions[6].metric",
+        ),
+    ],
+)
+def test_demo_contract_invalid_params_keep_code_and_location(
+    config_factory, base_contract, mutation, expected_code, expected_location
+):
+    """Parameter validation now lives on the guards, but the public error
+    contract (code + location) must stay byte-for-byte identical."""
+    contract = copy.deepcopy(base_contract)
+    mutation(contract)
+    path = config_factory(contract=contract)
+    with pytest.raises(GateSamplerError) as caught:
+        load_run_config(path)
+    assert caught.value.code == expected_code
+    assert caught.value.location == expected_location
+
+
 def test_undeclared_guard_column(config_factory, base_contract):
     contract = copy.deepcopy(base_contract)
     contract["assertions"][2]["column"] = "no_such_column"

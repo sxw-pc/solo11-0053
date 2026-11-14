@@ -4,12 +4,23 @@ from __future__ import annotations
 
 from collections import Counter
 
-from .base import Guard, GuardContext, GuardResult, key_label, round_metric
+from .base import (
+    Guard,
+    GuardContext,
+    GuardResult,
+    ParamSpec,
+    key_label,
+    round_metric,
+)
 
 
 class DuplicateGuard(Guard):
     type_name = "duplicate"
     code = "GS-GATE-106"
+    param_schema = (
+        ParamSpec("columns", "columns", required=True),
+        ParamSpec("max_rate", "number", required=True, minimum=0.0, maximum=1.0),
+    )
 
     def evaluate(self, context: GuardContext) -> GuardResult:
         columns = list(self.spec.get("columns", []))

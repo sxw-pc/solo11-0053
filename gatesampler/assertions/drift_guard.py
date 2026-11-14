@@ -6,7 +6,7 @@ from collections import Counter
 from collections.abc import Sequence
 from typing import Any
 
-from .base import Guard, GuardContext, GuardResult, round_metric
+from .base import Guard, GuardContext, GuardResult, ParamSpec, round_metric
 
 
 def _category(value: Any) -> str:
@@ -40,6 +40,18 @@ def _binned(values: Sequence[Any], low: float, high: float, bins: int) -> Counte
 class DriftGuard(Guard):
     type_name = "drift"
     code = "GS-GATE-107"
+    param_schema = (
+        ParamSpec("column", "column", required=True),
+        ParamSpec("baseline", "string", required=True),
+        ParamSpec("threshold", "number", required=True, minimum=0.0, maximum=1.0),
+        ParamSpec("bins", "integer", minimum=2),
+        ParamSpec(
+            "metric",
+            "constant",
+            value="max_share_delta",
+            message="目前只支持 max_share_delta",
+        ),
+    )
 
     def evaluate(self, context: GuardContext) -> GuardResult:
         column = self.spec.get("column")

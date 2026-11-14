@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import Counter
 
-from .base import Guard, GuardContext, GuardResult, key_label
+from .base import Guard, GuardContext, GuardResult, ParamSpec, key_label
 
 
 def _duplicates(context_rows, columns) -> tuple[int, list[int], list[list]]:
@@ -27,6 +27,10 @@ def _duplicates(context_rows, columns) -> tuple[int, list[int], list[list]]:
 class UniqueGuard(Guard):
     type_name = "unique"
     code = "GS-GATE-102"
+    param_schema = (
+        ParamSpec("columns", "columns", required=True),
+        ParamSpec("full_scan", "boolean"),
+    )
 
     def evaluate(self, context: GuardContext) -> GuardResult:
         columns = list(self.spec.get("columns", []))

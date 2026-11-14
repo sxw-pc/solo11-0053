@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
-from .base import Guard, GuardContext, GuardResult
+from .base import Guard, GuardContext, GuardResult, ParamSpec
 
 
 class DomainGuard(Guard):
     type_name = "domain"
     code = "GS-GATE-103"
+    param_schema = (
+        ParamSpec("column", "column", required=True),
+        ParamSpec("allowed", "scalar_list", required=True, message="allowed 必须是非空标量列表"),
+    )
 
     def evaluate(self, context: GuardContext) -> GuardResult:
         column = self.spec.get("column")

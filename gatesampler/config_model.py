@@ -6,11 +6,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .assertions import GUARD_TYPES  # noqa: F401  (re-exported public model API)
+
 CONFIG_VERSION = "1.0"
 CONTRACT_VERSIONS = frozenset({"1.0"})
 COLUMN_TYPES = frozenset({"int", "float", "bool", "str", "date"})
 SAMPLING_METHODS = frozenset({"systematic", "stratified", "reservoir"})
-GUARD_TYPES = frozenset({"count", "unique", "domain", "range", "nullrate", "duplicate", "drift"})
 DEFAULT_NULL_TOKENS = ("", "NULL", "null", "NA", "N/A", "None")
 
 

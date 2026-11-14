@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
-from .base import Guard, GuardContext, GuardResult
+from .base import Guard, GuardContext, GuardResult, ParamSpec
 
 
 class CountGuard(Guard):
     type_name = "count"
     code = "GS-GATE-101"
+    param_schema = (
+        ParamSpec("expected", "integer", minimum=0),
+        ParamSpec("tolerance", "integer", minimum=0),
+    )
 
     def evaluate(self, context: GuardContext) -> GuardResult:
         expected = self.spec.get("expected")

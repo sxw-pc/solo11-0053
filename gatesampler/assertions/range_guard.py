@@ -2,12 +2,39 @@
 
 from __future__ import annotations
 
-from .base import Guard, GuardContext, GuardResult
+from .base import Guard, GuardContext, GuardResult, ParamRule, ParamSpec
 
 
 class RangeGuard(Guard):
     type_name = "range"
     code = "GS-GATE-104"
+    param_schema = (
+        ParamSpec("column", "column", required=True),
+        ParamRule(
+            "range 至少需要一个边界",
+            lambda params: any(
+                key in params for key in ("min", "max", "min_length", "max_length")
+            ),
+        ),
+        ParamSpec("min", "number"),
+        ParamSpec("max", "number"),
+        ParamSpec("min_length", "integer", minimum=0),
+        ParamSpec("max_length", "integer", minimum=0),
+        ParamRule(
+            "min 不得大于 max",
+            lambda params: not (
+                "min" in params and "max" in params and params["min"] > params["max"]
+            ),
+        ),
+        ParamRule(
+            "min_length 不得大于 max_length",
+            lambda params: not (
+                "min_length" in params
+                and "max_length" in params
+                and params["min_length"] > params["max_length"]
+            ),
+        ),
+    )
 
     def evaluate(self, context: GuardContext) -> GuardResult:
         column = self.spec.get("column")
