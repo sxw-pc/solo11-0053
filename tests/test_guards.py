@@ -4,6 +4,7 @@ from typing import Any
 
 from gatesampler.assertions import GuardContext, RowRef, run_guards
 from gatesampler.config import AssertionSpec
+from gatesampler.util import canonical_json
 
 
 def refs(values: list[Any], key: str = "value") -> list[RowRef]:
@@ -66,6 +67,128 @@ def test_unique_guard_sample_and_full_scan():
     assert sample_only.evidence["full_scan"] is False
     skipped = evaluate("unique", columns=["missing"])
     assert skipped.status == "skip"
+
+
+def grouped_refs(rows: list[dict]) -> list[RowRef]:
+    return [RowRef(index + 1, row) for index, row in enumerate(rows)]
+
+
+def evaluate_grouped_unique(
+    sample_rows: list[dict],
+    full_rows: list[dict] | None = None,
+    *,
+    severity: str = "fail",
+    **params: Any,
+):
+    spec = AssertionSpec("check_x", "unique", severity, params)
+    context = GuardContext(
+        sample=grouped_refs(sample_rows),
+        full=grouped_refs(sample_rows if full_rows is None else full_rows),
+        column_types={"order_id": "str", "region": "str", "status": "str"},
+    )
+    return run_guards([spec], context)[0]
+
+
+def test_unique_guard_group_by_cross_region_pass_same_group_fail():
+    cross_region = [
+        {"order_id": "o1", "region": "north"},
+        {"order_id": "o1", "region": "south"},
+    ]
+    passed = evaluate_grouped_unique(
+        cross_region, columns=["order_id"], group_by="region", full_scan=True
+    )
+    assert passed.status == "pass"
+    assert passed.evidence["group_by"] == ["region"]
+    # 同一输入不加 group_by 时仍是全局重复
+    assert (
+        evaluate_grouped_unique(cross_region, columns=["order_id"], full_scan=True).status
+        == "fail"
+    )
+    same_group = [
+        {"order_id": "o1", "region": "north"},
+        {"order_id": "o1", "region": "north"},
+    ]
+    failed = evaluate_grouped_unique(
+        same_group, columns=["order_id"], group_by=["region"], full_scan=True
+    )
+    assert failed.status == "fail"
+    assert failed.code == "GS-GATE-102"
+    assert failed.evidence["full_duplicate_rows"] == 1
+    # 重复键按命中行逐行记录（与 full_rows 平行），复合键为 [组键, 主键]
+    assert failed.evidence["full_duplicate_keys"] == [["north", "o1"], ["north", "o1"]]
+
+
+def test_unique_guard_group_by_null_region_is_same_group():
+    # batch_bad 形态：两条重复 order_id 的 region 均为 None，属同组重复而非跨区误报
+    rows = [
+        {"order_id": "o1", "region": None},
+        {"order_id": "o1", "region": None},
+        {"order_id": "o2", "region": "north"},
+    ]
+    result = evaluate_grouped_unique(
+        rows, columns=["order_id"], group_by="region", full_scan=True
+    )
+    assert result.status == "fail"
+    assert result.evidence["full_duplicate_keys"] == [[None, "o1"], [None, "o1"]]
+    canonical_json(result.to_dict())  # evidence 必须 JSON 可序列化
+
+
+def test_unique_guard_group_by_sample_collision_fails():
+    sample = [
+        {"order_id": "o1", "region": "north"},
+        {"order_id": "o1", "region": "north"},
+    ]
+    full = sample + [{"order_id": "o2", "region": "west"}]
+    result = evaluate_grouped_unique(sample, full, columns=["order_id"], group_by="region")
+    assert result.status == "fail"
+    assert result.evidence["full_scan"] is False
+    assert result.evidence["sample_duplicate_rows"] == 1
+    assert result.evidence["sample_duplicate_keys"] == [["north", "o1"], ["north", "o1"]]
+
+
+def test_unique_guard_group_by_sample_coverage_evidence():
+    sample = [
+        {"order_id": "o1", "region": "north"},
+        {"order_id": "o2", "region": "south"},
+    ]
+    full = sample + [
+        {"order_id": "o3", "region": "west"},
+        {"order_id": "o4", "region": None},
+    ]
+    result = evaluate_grouped_unique(sample, full, columns=["order_id"], group_by="region")
+    assert result.status == "pass"
+    assert "覆盖 2/4 个分组" in result.message
+    coverage = result.evidence["group_coverage"]
+    assert coverage["total_groups"] == 4
+    assert coverage["covered_group_count"] == 2
+    assert coverage["uncovered_group_count"] == 2
+    assert coverage["covered_ratio"] == 0.5
+    assert coverage["covered_groups"] == [["north"], ["south"]]
+    # None 组排在字符串组之后（stable_scalar 顺序稳定）
+    assert coverage["uncovered_groups"] == [["west"], [None]]
+    assert coverage["groups_truncated"] is False
+    canonical_json(result.to_dict())
+    # full_scan 切换只改取值不改 evidence 键集合，签名仍可比对
+    full_result = evaluate_grouped_unique(
+        sample, full, columns=["order_id"], group_by="region", full_scan=True
+    )
+    assert full_result.evidence["group_coverage"] is None
+    assert set(full_result.evidence) == set(result.evidence)
+
+
+def test_unique_guard_group_by_multi_column_and_missing():
+    rows = [
+        {"order_id": "o1", "region": "north", "status": "paid"},
+        {"order_id": "o1", "region": "north", "status": "void"},
+    ]
+    passed = evaluate_grouped_unique(
+        rows, columns=["order_id"], group_by=["region", "status"], full_scan=True
+    )
+    assert passed.status == "pass"
+    assert passed.evidence["group_by"] == ["region", "status"]
+    skipped = evaluate_grouped_unique(rows, columns=["order_id"], group_by="absent")
+    assert skipped.status == "skip"
+    assert skipped.evidence["missing_columns"] == ["absent"]
 
 
 def test_domain_guard_pass_fail_warn_skip():

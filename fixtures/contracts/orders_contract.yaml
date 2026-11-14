@@ -40,6 +40,7 @@ assertions:
   - id: order_id_unique
     type: unique
     columns: [order_id]
+    group_by: region
     full_scan: true
     severity: fail
 

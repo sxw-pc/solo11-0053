@@ -158,12 +158,23 @@ def validate_assertion_params(
         if "tolerance" in params:
             integer(params["tolerance"], f"{location}.tolerance", minimum=0)
     elif kind == "unique":
-        check_keys(params, {"columns", "full_scan"}, location)
+        check_keys(params, {"columns", "full_scan", "group_by"}, location)
         for item in strings(params.get("columns"), f"{location}.columns", nonempty=True):
             if item not in schema.columns:
                 fail("GS-CFG-030", f"字段未在 schema 中声明: {item}", f"{location}.columns")
         if "full_scan" in params:
             boolean(params["full_scan"], f"{location}.full_scan")
+        if "group_by" in params:
+            raw_group_by = params["group_by"]
+            if isinstance(raw_group_by, str):
+                group_fields = [text(raw_group_by, f"{location}.group_by")]
+            elif isinstance(raw_group_by, list):
+                group_fields = strings(raw_group_by, f"{location}.group_by", nonempty=True)
+            else:
+                fail("GS-CFG-004", "期望字符串或字符串列表", f"{location}.group_by")
+            for item in group_fields:
+                if item not in schema.columns:
+                    fail("GS-CFG-030", f"字段未在 schema 中声明: {item}", f"{location}.group_by")
     elif kind == "domain":
         check_keys(params, {"column", "allowed"}, location)
         column("column")

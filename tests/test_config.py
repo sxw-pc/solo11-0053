@@ -98,6 +98,36 @@ def test_undeclared_guard_column(config_factory, base_contract):
     assert_code("GS-CFG-030", lambda: load_run_config(path))
 
 
+def test_unique_group_by_string_and_list_accepted(config_factory, base_contract):
+    contract = copy.deepcopy(base_contract)
+    contract["assertions"][1]["group_by"] = "region"
+    path = config_factory(contract=contract)
+    config = load_run_config(path)
+    assert config.contract.assertions[1].params["group_by"] == "region"
+    contract["assertions"][1]["group_by"] = ["region", "status"]
+    path = config_factory(contract=contract)
+    config = load_run_config(path)
+    assert config.contract.assertions[1].params["group_by"] == ["region", "status"]
+
+
+def test_unique_group_by_invalid_type(config_factory, base_contract):
+    for bad_value in (7, {"field": "region"}, []):
+        contract = copy.deepcopy(base_contract)
+        contract["assertions"][1]["group_by"] = bad_value
+        path = config_factory(contract=contract)
+        assert_code("GS-CFG-004", lambda path=path: load_run_config(path))
+
+
+def test_unique_group_by_undeclared_column(config_factory, base_contract):
+    contract = copy.deepcopy(base_contract)
+    contract["assertions"][1]["group_by"] = "no_such_column"
+    path = config_factory(contract=contract)
+    assert_code("GS-CFG-030", lambda: load_run_config(path))
+    contract["assertions"][1]["group_by"] = ["region", "no_such_column"]
+    path = config_factory(contract=contract)
+    assert_code("GS-CFG-030", lambda: load_run_config(path))
+
+
 def test_missing_contract_yaml(tmp_path):
     config = tmp_path / "bad.yaml"
     config.write_text('version: "1.0"\ncontract: absent.yaml\nbatches: []\n', encoding="utf-8")

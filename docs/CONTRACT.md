@@ -62,7 +62,7 @@ sampling:
 
 assertions:
   - { id: row_count_match, type: count, tolerance: 0, severity: fail }
-  - { id: order_id_unique, type: unique, columns: [order_id], full_scan: true, severity: fail }
+  - { id: order_id_unique, type: unique, columns: [order_id], group_by: region, full_scan: true, severity: fail }
   - { id: status_enum, type: domain, column: status, allowed: [paid, pending, refunded, cancelled] }
   - { id: amount_bounds, type: range, column: amount, min: 0, max: 5000 }
   - { id: region_null_rate, type: nullrate, column: region, max_rate: 0.10 }
@@ -131,7 +131,7 @@ decision:
 | 类型 | 必要参数 | 语义与范围 |
 | --- | --- | --- |
 | `count` | 可选 `expected`、`tolerance`（默认 0） | 实际批次行数对比 `expected`，未给则用批次的 `expected_rows`；只读批次元数据 |
-| `unique` | `columns` 非空列表；`full_scan` 布尔 | 主键组合唯一；先查样本。`full_scan: true` 时显式退回全量，这是唯一允许全表扫描的断言；不开启时证据明确说明样本不能证明整批唯一 |
+| `unique` | `columns` 非空列表；`full_scan` 布尔；可选 `group_by`（字符串或字段列表） | 主键组合唯一；先查样本。`full_scan: true` 时显式退回全量，这是唯一允许全表扫描的断言；不开启时证据明确说明样本不能证明整批唯一。声明 `group_by` 时唯一性收窄为「组内唯一」：按 `(组键, 主键)` 复合键聚合，例如 `order_id` 只需在同一 `region` 内唯一；样本模式且未全量时，证据中的 `group_coverage` 给出样本覆盖的组、覆盖比例与完全未触及的组 |
 | `domain` | `column`、`allowed` 非空标量列表 | 样本中非空值必须属于集合；空值由 nullrate 负责 |
 | `range` | `column`，以及 `min`/`max`/`min_length`/`max_length` 至少一项 | 数值边界包含端点；长度按 `str(value)` 计算；非数值计入违规 |
 | `nullrate` | `column`、`max_rate`（0–1） | 样本空值数/样本量；恰好等于阈值视为通过 |

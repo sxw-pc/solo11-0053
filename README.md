@@ -78,7 +78,7 @@ batches:
 
 样本量用 `size`（固定条数）或 `fraction`（比例，向上取整）声明，两者只能出现一个。相同 `seed + 输入 + 方法 + 参数` 得到逐字节一致的抽样结果，并记录 `sample_fingerprint`。
 
-七类断言：`count`（行数守恒）、`unique`（主键唯一，可显式 `full_scan: true` 全量校验）、`domain`（枚举合法）、`range`（数值/长度边界）、`nullrate`（字段空值率）、`duplicate`（字段重复率）、`drift`（相对基线的最大占比偏移）。每条断言输出 `status / metric / threshold / evidence / code / message`；样本内命中行以记录号定位。`unique` 若不做全量会在证据中明确写出“样本范围无法证明整批唯一”的说明。
+七类断言：`count`（行数守恒）、`unique`（主键唯一，可显式 `full_scan: true` 全量校验；可选 `group_by` 把唯一性收窄为组内唯一，如 `order_id` 在同一 `region` 内唯一）、`domain`（枚举合法）、`range`（数值/长度边界）、`nullrate`（字段空值率）、`duplicate`（字段重复率）、`drift`（相对基线的最大占比偏移）。每条断言输出 `status / metric / threshold / evidence / code / message`；样本内命中行以记录号定位。`unique` 若不做全量会在证据中明确写出“样本范围无法证明整批唯一”的说明；声明 `group_by` 时还会给出 `group_coverage`（样本覆盖的组、覆盖比例、未触及的组）。
 
 ## 决策、报告与台账
 
