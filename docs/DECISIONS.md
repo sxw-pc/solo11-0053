@@ -17,6 +17,8 @@
 ```text
 if any(status == fail) and block_on_fail:
     block
+elif block_on_fail_count is not null and count(fail) >= block_on_fail_count:
+    block
 elif any(status == fail):              # block_on_fail: false
     review
 elif count(warn) >= review_on_warn_count:
@@ -30,6 +32,7 @@ else:
 - `block_on_fail` 默认 `true`，保证任何硬失败都能阻断批次。
 - `review_on_warn_count` 必须为正整数，默认 `1`。
 - `review_on_skip_count` 可省略；省略时 skip 不影响决策，但会保留在报告与台账中。显式配置时必须为正整数。
+- `block_on_fail_count` 可省略；省略时决策行为与旧契约完全一致。显式配置时必须为正整数：在 `block_on_fail: false` 的前提下，fail 数量 `>=` 该阈值时整批 `block`（`GS-DEC-006`）而不是转人工；未达阈值仍走 fail 转人工（`GS-DEC-004`）。`block_on_fail: true` 时由优先级更高的 `GS-DEC-001` 先行命中，该阈值不改变结果。
 - 所有阈值比较都是 `>=`；`warn 数量恰好等于阈值` 即转人工。
 - 断言自身的 `severity` 决定违规呈现为 `fail` 还是 `warn`，决策规则不重新解释阈值。
 
@@ -79,6 +82,7 @@ else:
 | `GS-DEC-003` | `all_clear` | `pass` |
 | `GS-DEC-004` | `fail_requires_review` | `review`（`block_on_fail: false`） |
 | `GS-DEC-005` | `skip_review` | `review` |
+| `GS-DEC-006` | `fail_count_blocks` | `block`（fail 数量达到 `block_on_fail_count`） |
 
 决策最终态不依赖理由链的顺序，但理由链顺序由断言声明顺序决定，保证同输入报告字节稳定。报告 JSON 的 `decision.counts` 统计四种状态；`error_codes.decision` 统计实际出现的规则码。
 
@@ -118,6 +122,14 @@ decision: { block_on_fail: false, review_on_warn_count: 1 }
 ```
 
 → fail 不再阻断自动流程，但会把批次转人工 (`GS-DEC-004`)，避免无证据放行。
+
+### fail 数量达阈值仍拦截
+
+```yaml
+decision: { block_on_fail: false, block_on_fail_count: 3, review_on_warn_count: 1 }
+```
+
+→ 少量 fail 仍走人工复核；当 fail 数量 `>= 3` 时命中 `GS-DEC-006`（`fail_count_blocks`），整批 `block`，理由链摘要在前、逐条 fail 断言理由在后，形状与 `GS-DEC-001` 一致。省略 `block_on_fail_count` 时该规则不参与分派，行为与旧契约完全相同。
 
 ## 6. 审计与重放
 

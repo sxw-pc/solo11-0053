@@ -110,3 +110,50 @@ def test_sampling_size_fraction_exclusive(config_factory, base_contract):
     contract["sampling"]["fraction"] = 0.5
     path = config_factory(contract=contract)
     assert_code("GS-CFG-020", lambda: load_run_config(path))
+
+
+def test_decision_accepts_block_on_fail_count(config_factory, base_contract):
+    from gatesampler.config_validation import parse_decision
+
+    spec = parse_decision({"block_on_fail": False, "block_on_fail_count": 3})
+    assert spec.block_on_fail_count == 3
+    # 未声明时保持缺省 None，行为与旧契约一致。
+    assert parse_decision(None).block_on_fail_count is None
+    assert parse_decision({}).block_on_fail_count is None
+
+    contract = copy.deepcopy(base_contract)
+    contract["decision"]["block_on_fail_count"] = 2
+    path = config_factory(contract=contract)
+    config = load_run_config(path)
+    assert config.contract.decision.block_on_fail_count == 2
+
+
+def test_block_on_fail_count_rejects_non_integer(config_factory, base_contract):
+    contract = copy.deepcopy(base_contract)
+    contract["decision"]["block_on_fail_count"] = "2"
+    path = config_factory(contract=contract)
+    assert_code("GS-CFG-004", lambda: load_run_config(path))
+
+
+def test_block_on_fail_count_rejects_boolean(config_factory, base_contract):
+    contract = copy.deepcopy(base_contract)
+    contract["decision"]["block_on_fail_count"] = True
+    path = config_factory(contract=contract)
+    assert_code("GS-CFG-004", lambda: load_run_config(path))
+
+
+def test_block_on_fail_count_rejects_non_positive(config_factory, base_contract):
+    contract = copy.deepcopy(base_contract)
+    contract["decision"]["block_on_fail_count"] = 0
+    path = config_factory(contract=contract)
+    with pytest.raises(GateSamplerError) as caught:
+        load_run_config(path)
+    assert caught.value.code == "GS-CFG-004"
+    assert "block_on_fail_count" in (caught.value.location or "")
+
+
+def test_unknown_decision_parameter_still_rejected(config_factory, base_contract):
+    contract = copy.deepcopy(base_contract)
+    contract["decision"]["mystery_option"] = 1
+    path = config_factory(contract=contract)
+    assert_code("GS-CFG-040", lambda: load_run_config(path))

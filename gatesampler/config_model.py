@@ -82,13 +82,18 @@ class DecisionSpec:
     block_on_fail: bool = True
     review_on_warn_count: int = 1
     review_on_skip_count: int | None = None
+    block_on_fail_count: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        # 未声明的可选字段不进入字典，保证未使用新规则时配置快照逐字节稳定。
+        data = {
             "block_on_fail": self.block_on_fail,
             "review_on_warn_count": self.review_on_warn_count,
             "review_on_skip_count": self.review_on_skip_count,
         }
+        if self.block_on_fail_count is not None:
+            data["block_on_fail_count"] = self.block_on_fail_count
+        return data
 
 
 @dataclass(frozen=True)

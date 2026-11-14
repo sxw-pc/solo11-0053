@@ -127,7 +127,7 @@ python -m gatesampler replay --ledger out/gate_sampler.sqlite3 --batch-id batch_
 
 | 码段 | 含义 |
 | --- | --- |
-| `GS-DEC-001`..`005` | 拦截、warn 转人工、放行、fail 转人工、skip 转人工 |
+| `GS-DEC-001`..`006` | 拦截、warn 转人工、放行、fail 转人工、skip 转人工、fail 数量达阈值拦截 |
 | `GS-LGR-001`..`004` | 重放参数缺失、记录不存在、快照缺失、台账查询失败 |
 | `GS-SRV-001` / `002` | 非回环监听地址拒绝 / 服务启动失败 |
 

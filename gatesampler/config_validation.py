@@ -242,7 +242,15 @@ def parse_decision(raw: Any) -> DecisionSpec:
     if raw is None:
         return DecisionSpec()
     data = mapping(raw, "contract.decision")
-    unknown = sorted(set(data) - {"block_on_fail", "review_on_warn_count", "review_on_skip_count"})
+    unknown = sorted(
+        set(data)
+        - {
+            "block_on_fail",
+            "review_on_warn_count",
+            "review_on_skip_count",
+            "block_on_fail_count",
+        }
+    )
     if unknown:
         fail("GS-CFG-040", f"未知决策参数: {', '.join(unknown)}", "contract.decision")
     block = boolean(data.get("block_on_fail", True), "contract.decision.block_on_fail")
@@ -255,7 +263,15 @@ def parse_decision(raw: Any) -> DecisionSpec:
         if skip_raw is None
         else integer(skip_raw, "contract.decision.review_on_skip_count", minimum=1)
     )
-    return DecisionSpec(block, warn_count, skip_count)
+    fail_count_raw = data.get("block_on_fail_count")
+    fail_count = (
+        None
+        if fail_count_raw is None
+        else integer(
+            fail_count_raw, "contract.decision.block_on_fail_count", minimum=1
+        )
+    )
+    return DecisionSpec(block, warn_count, skip_count, fail_count)
 
 
 def parse_batch(raw: Any, index: int, base_dir: Path) -> BatchSpec:
