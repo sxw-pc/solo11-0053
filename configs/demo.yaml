@@ -1,0 +1,23 @@
+version: "1.0"
+contract: ../fixtures/contracts/orders_contract.yaml
+strict: false
+
+output:
+  dir: out
+  ledger: out/gate_sampler.sqlite3
+
+batches:
+  - batch_id: batch_a
+    source: ../fixtures/batches/batch_a.csv
+    format: csv
+    expected_rows: 24
+
+  - batch_id: batch_b
+    source: ../fixtures/batches/batch_b.jsonl
+    format: jsonl
+    expected_rows: 20
+
+  - batch_id: batch_bad
+    source: ../fixtures/batches/batch_bad.csv
+    format: csv
+    expected_rows: 26

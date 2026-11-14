@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ record.batch_id }} · GateSampler</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f4f1ea; --panel: #fffdf8; --ink: #1f2a24; --muted: #68746d;
+      --line: #d9d4c8; --pass: #1f7a4c; --block: #b33a2b; --review: #a36511;
+      --accent: #2f5d50; --warn: #a36511;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #151b18; --panel: #1d2621; --ink: #e9eee9; --muted: #a5b2aa;
+        --line: #35423b; --pass: #61c894; --block: #f08a7d; --review: #e5b463;
+        --accent: #8fc7b4; --warn: #e5b463;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; color: var(--ink); background:
+      radial-gradient(circle at top right, rgba(81, 125, 108, .15), transparent 34rem), var(--bg);
+      font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    main { width: min(1180px, 94vw); margin: 0 auto; padding: 28px 0 60px; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .back { font-size: 13px; }
+    header { margin: 16px 0 22px; display: flex; justify-content: space-between; align-items: start; gap: 16px; }
+    h1 { margin: 0; font-size: clamp(27px, 4vw, 42px); letter-spacing: -.04em; }
+    .sub { color: var(--muted); margin: 6px 0 0; }
+    .badge {
+      display: inline-block; border-radius: 999px; padding: 4px 13px;
+      border: 1px solid currentColor; font-weight: 700; font-size: 14px;
+    }
+    .pass { color: var(--pass); } .block { color: var(--block); } .review { color: var(--review); }
+    .warn { color: var(--warn); }
+    .muted { color: var(--muted); }
+    .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 11px; margin-bottom: 17px; }
+    .card, section { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; }
+    .card { padding: 13px 15px; }
+    .card span { display: block; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+    .card strong { display: block; margin-top: 4px; font-size: 20px; overflow-wrap: anywhere; }
+    section { padding: 17px; margin-top: 13px; }
+    h2 { margin: 0 0 12px; font-size: 18px; letter-spacing: -.02em; }
+    h3 { margin: 0 0 7px; font-size: 15px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border-bottom: 1px solid var(--line); padding: 9px 8px; text-align: left; vertical-align: top; }
+    th { color: var(--muted); font-size: 11px; letter-spacing: .07em; text-transform: uppercase; }
+    tr:last-child td { border-bottom: 0; }
+    code, .mono, pre { font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; }
+    code { font-size: 12px; overflow-wrap: anywhere; }
+    .meta-grid { display: grid; grid-template-columns: 160px 1fr; gap: 0; }
+    .meta-grid dt { color: var(--muted); padding: 6px 0; border-bottom: 1px solid var(--line); }
+    .meta-grid dd { margin: 0; padding: 6px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+    .assertion { border-top: 1px solid var(--line); padding: 14px 0; }
+    .assertion:first-of-type { border-top: 0; }
+    .assertion-head { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
+    .assertion-head .message { flex-basis: 100%; color: var(--muted); font-size: 13px; }
+    .pill { border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; font-size: 11px; color: var(--muted); }
+    details { margin-top: 9px; }
+    summary { cursor: pointer; color: var(--accent); font-size: 13px; }
+    pre {
+      margin: 8px 0 0; padding: 12px; border: 1px solid var(--line); border-radius: 9px;
+      background: var(--bg); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere;
+      max-height: 460px; overflow: auto;
+    }
+    .empty { color: var(--muted); padding: 12px 0; }
+    footer { color: var(--muted); font-size: 12px; margin-top: 18px; }
+    @media (max-width: 800px) { .grid { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 560px) {
+      header { display: block; }
+      .grid { grid-template-columns: 1fr; }
+      .meta-grid { grid-template-columns: 1fr; }
+      .meta-grid dd { padding-top: 0; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <a class="back" href="{{ url_for('index') }}">← 返回判定台账</a>
+  <header>
+    <div>
+      <h1>{{ record.batch_id }}</h1>
+      <p class="sub">闸门 <code>{{ record.gate_id }}</code> · 契约 {{ record.contract_version }} · 判定 <code>{{ record.run_id }}</code></p>
+    </div>
+    <span class="badge {{ record.decision }}">{{ record.decision }}</span>
+  </header>
+
+  <div class="grid">
+    <div class="card"><span>行数 / 列数</span><strong>{{ record.row_count }} / {{ record.column_count }}</strong></div>
+    <div class="card"><span>抽样方法</span><strong>{{ record.sampling.method }}</strong></div>
+    <div class="card"><span>种子</span><strong>{{ record.sampling.seed }}</strong></div>
+    <div class="card"><span>实际样本</span><strong>{{ record.sampling.size_actual }}</strong></div>
+  </div>
+
+  <section>
+    <h2>批次元数据</h2>
+    <dl class="meta-grid">
+      <dt>来源</dt><dd><code>{{ record.source }}</code></dd>
+      <dt>文件 SHA-256</dt><dd><code>{{ record.source_sha256 }}</code></dd>
+      <dt>格式</dt><dd>{{ record.format }}</dd>
+      <dt>声明行数</dt><dd>{{ record.expected_rows if record.expected_rows is not none else "未声明" }}</dd>
+      <dt>判定时间（UTC）</dt><dd><code>{{ record.created_at }}</code></dd>
+      <dt>配置指纹</dt><dd><code>{{ record.config_fingerprint }}</code></dd>
+      <dt>报告 SHA-256</dt><dd><code>{{ record.report_sha256 }}</code></dd>
+      <dt>fail / warn / skip</dt><dd>{{ record.fail_count }} / {{ record.warn_count }} / {{ record.skip_count }}</dd>
+    </dl>
+  </section>
+
+  <section>
+    <h2>抽样与可复现性</h2>
+    <dl class="meta-grid">
+      <dt>请求 / 实际样本量</dt><dd>{{ record.sampling.size_requested }} / {{ record.sampling.size_actual }}</dd>
+      <dt>样本指纹</dt><dd><code>{{ record.sampling.sample_fingerprint }}</code></dd>
+      <dt>样本记录号</dt><dd><code>{{ record.sampling.sample_record_numbers }}</code></dd>
+      <dt>样本行索引</dt><dd><code>{{ record.sampling.indices }}</code></dd>
+    </dl>
+    {% if record.sampling.details.strata %}
+    <details>
+      <summary>查看分层分配</summary>
+      <pre>{{ record.sampling.details.strata | tojson(indent=2) }}</pre>
+    </details>
+    {% endif %}
+  </section>
+
+  <section>
+    <h2>决策理由链</h2>
+    <table>
+      <thead><tr><th>规则码</th><th>规则</th><th>贡献态</th><th>断言</th><th>说明</th></tr></thead>
+      <tbody>
+        {% for reason in record.reasons %}
+        <tr>
+          <td><code>{{ reason.rule_code }}</code></td>
+          <td>{{ reason.rule }}</td>
+          <td class="{{ reason.outcome }}"><strong>{{ reason.outcome }}</strong></td>
+          <td>{{ reason.assertion_id or "—" }}</td>
+          <td>{{ reason.message }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>断言明细与证据</h2>
+    {% if record.assertions %}
+      {% for assertion in record.assertions %}
+      <div class="assertion">
+        <div class="assertion-head">
+          <h3><code>{{ assertion.assertion_id }}</code></h3>
+          <span class="badge {{ assertion.status }}">{{ assertion.status }}</span>
+          <span class="pill">{{ assertion.type }}</span>
+          <span class="pill">{{ assertion.code }}</span>
+          <span class="pill">metric={{ assertion.metric }}</span>
+          <span class="pill">threshold={{ assertion.threshold }}</span>
+          <div class="message">{{ assertion.message }}</div>
+        </div>
+        <details>
+          <summary>证据 JSON（命中行、统计量与范围说明）</summary>
+          <pre>{{ assertion.evidence | tojson(indent=2) }}</pre>
+        </details>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="empty">没有断言记录。</div>
+    {% endif %}
+  </section>
+
+  <footer>
+    台账：<code>{{ ledger }}</code> · 此页面只读 · 默认仅监听 127.0.0.1 · 不引用任何外部资源
+  </footer>
+</main>
+</body>
+</html>

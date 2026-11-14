@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gate-sampler"
+version = "0.1.0"
+description = "Offline, deterministic sampling gate for pre-ingestion batch admission"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "GateSampler contributors" }]
+dependencies = [
+  "PyYAML>=6.0",
+  "click>=8.1",
+  "Flask>=3.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4"]
+
+[project.scripts]
+gatesampler = "gatesampler.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["gatesampler*"]
+
+[tool.setuptools.package-data]
+gatesampler = ["server/templates/*.html"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+filterwarnings = [
+  "ignore:.*asyncio_default_fixture_loop_scope.*",
+]

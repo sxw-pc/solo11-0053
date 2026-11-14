@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GateSampler · 闸门判定台账</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f4f1ea;
+      --panel: #fffdf8;
+      --ink: #1f2a24;
+      --muted: #68746d;
+      --line: #d9d4c8;
+      --pass: #1f7a4c;
+      --block: #b33a2b;
+      --review: #a36511;
+      --accent: #2f5d50;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #151b18;
+        --panel: #1d2621;
+        --ink: #e9eee9;
+        --muted: #a5b2aa;
+        --line: #35423b;
+        --pass: #61c894;
+        --block: #f08a7d;
+        --review: #e5b463;
+        --accent: #8fc7b4;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: radial-gradient(circle at top left, rgba(81, 125, 108, .16), transparent 36rem), var(--bg);
+      color: var(--ink);
+      font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    main { width: min(1180px, 94vw); margin: 0 auto; padding: 34px 0 60px; }
+    header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+    h1 { margin: 0; font-size: clamp(26px, 4vw, 40px); letter-spacing: -.04em; }
+    .sub { margin: 7px 0 0; color: var(--muted); max-width: 64ch; }
+    .local {
+      border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px;
+      color: var(--accent); white-space: nowrap; font-size: 13px; background: var(--panel);
+    }
+    .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 24px 0 18px; }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 15px 17px; }
+    .card span { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
+    .card strong { display: block; font-size: 31px; margin-top: 3px; line-height: 1.1; }
+    .filters {
+      display: flex; flex-wrap: wrap; gap: 10px; align-items: end;
+      background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px;
+    }
+    label { display: grid; gap: 4px; color: var(--muted); font-size: 12px; }
+    input, select, button {
+      font: inherit; color: var(--ink); background: var(--bg);
+      border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px;
+    }
+    button { cursor: pointer; background: var(--accent); color: var(--panel); border-color: var(--accent); font-weight: 650; }
+    .reset { align-self: center; color: var(--muted); font-size: 13px; }
+    .table-wrap {
+      margin-top: 16px; overflow-x: auto; background: var(--panel);
+      border: 1px solid var(--line); border-radius: 14px;
+    }
+    table { width: 100%; border-collapse: collapse; min-width: 860px; }
+    th, td { text-align: left; padding: 11px 13px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { color: var(--muted); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+    tr:last-child td { border-bottom: 0; }
+    tr:hover td { background: rgba(81, 125, 108, .06); }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code, .mono { font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; font-size: 12px; }
+    .badge {
+      display: inline-block; border-radius: 999px; padding: 2px 9px;
+      border: 1px solid currentColor; font-size: 12px; font-weight: 700;
+    }
+    .pass { color: var(--pass); }
+    .block { color: var(--block); }
+    .review { color: var(--review); }
+    .muted { color: var(--muted); }
+    .empty { padding: 45px 20px; text-align: center; color: var(--muted); }
+    footer { margin-top: 20px; color: var(--muted); font-size: 12px; }
+    @media (max-width: 700px) {
+      header { display: block; }
+      .local { display: inline-block; margin-top: 12px; }
+      .cards { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>闸门抽样台</h1>
+      <p class="sub">入库前批次抽样、闸门断言与三态准入判定的只读审计台账。所有页面仅由本机 SQLite 渲染。</p>
+    </div>
+    <div class="local">● 仅限 127.0.0.1</div>
+  </header>
+
+  <section class="cards" aria-label="决策统计">
+    <div class="card"><span>放行 pass</span><strong class="pass">{{ counts.pass }}</strong></div>
+    <div class="card"><span>拦截 block</span><strong class="block">{{ counts.block }}</strong></div>
+    <div class="card"><span>转人工 review</span><strong class="review">{{ counts.review }}</strong></div>
+  </section>
+
+  <form class="filters" method="get" action="{{ url_for('index') }}">
+    <label>批次 ID
+      <input name="batch_id" value="{{ filters.batch_id }}" placeholder="batch_a">
+    </label>
+    <label>闸门 ID
+      <input name="gate_id" value="{{ filters.gate_id }}" placeholder="orders_gate">
+    </label>
+    <label>决策
+      <select name="decision">
+        <option value="">全部</option>
+        <option value="pass" {% if filters.decision == 'pass' %}selected{% endif %}>pass</option>
+        <option value="block" {% if filters.decision == 'block' %}selected{% endif %}>block</option>
+        <option value="review" {% if filters.decision == 'review' %}selected{% endif %}>review</option>
+      </select>
+    </label>
+    <button type="submit">筛选</button>
+    <a class="reset" href="{{ url_for('index') }}">清除条件</a>
+  </form>
+
+  <section class="table-wrap" aria-label="判定列表">
+    {% if records %}
+    <table>
+      <thead>
+        <tr>
+          <th>批次</th>
+          <th>闸门</th>
+          <th>决策</th>
+          <th>行数</th>
+          <th>fail / warn / skip</th>
+          <th>判定 ID</th>
+          <th>时间（UTC）</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in records %}
+        <tr>
+          <td><a href="{{ url_for('batch_detail', run_id=row.run_id) }}"><strong>{{ row.batch_id }}</strong></a></td>
+          <td><span class="mono">{{ row.gate_id }}</span><br><span class="muted">契约 {{ row.contract_version }}</span></td>
+          <td><span class="badge {{ row.decision }}">{{ row.decision }}</span></td>
+          <td>{{ row.row_count }}</td>
+          <td>{{ row.fail_count }} / {{ row.warn_count }} / {{ row.skip_count }}</td>
+          <td><span class="mono">{{ row.run_id }}</span></td>
+          <td class="mono">{{ row.created_at }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">
+      没有匹配的判定。先运行
+      <code>python -m gatesampler run --config configs/demo.yaml</code>
+      生成台账。
+    </div>
+    {% endif %}
+  </section>
+
+  <footer>台账：<span class="mono">{{ ledger }}</span> · 只读界面 · 无 CDN · 无外部请求</footer>
+</main>
+</body>
+</html>

@@ -1,0 +1,26 @@
+version: "1.0"
+contract: ../fixtures/contracts/orders_contract.yaml
+strict: true
+
+contract_overrides:
+  description: "严格加载模式演示：蓄水池抽样、20 条样本"
+  sampling:
+    method: reservoir
+    seed: 777
+    size: 20
+    strata_field: null
+
+output:
+  dir: out-strict
+  ledger: out-strict/gate_sampler.sqlite3
+
+batches:
+  - batch_id: batch_a
+    source: ../fixtures/batches/batch_a.csv
+    format: csv
+    expected_rows: 24
+
+  - batch_id: batch_b
+    source: ../fixtures/batches/batch_b.jsonl
+    format: jsonl
+    expected_rows: 20

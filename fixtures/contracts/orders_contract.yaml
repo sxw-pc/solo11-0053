@@ -1,0 +1,82 @@
+contract_version: "1.0"
+gate_id: orders_gate
+description: "订单批次入库前的抽样闸门契约（合成演示数据）"
+
+schema:
+  allow_extra_columns: false
+  null_tokens: ["", "NULL", "null", "NA", "N/A", "None"]
+  columns:
+    order_id:
+      type: str
+      required: true
+    customer_id:
+      type: str
+      required: true
+    region:
+      type: str
+      required: true
+    amount:
+      type: float
+      required: true
+    status:
+      type: str
+      required: true
+    created_at:
+      type: date
+      required: true
+
+sampling:
+  method: stratified
+  seed: 20240117
+  size: 14
+  strata_field: region
+
+assertions:
+  - id: row_count_match
+    type: count
+    tolerance: 0
+    severity: fail
+
+  - id: order_id_unique
+    type: unique
+    columns: [order_id]
+    full_scan: true
+    severity: fail
+
+  - id: status_enum
+    type: domain
+    column: status
+    allowed: [paid, pending, refunded, cancelled]
+    severity: fail
+
+  - id: amount_bounds
+    type: range
+    column: amount
+    min: 0
+    max: 5000
+    severity: fail
+
+  - id: region_null_rate
+    type: nullrate
+    column: region
+    max_rate: 0.10
+    severity: fail
+
+  - id: customer_duplicate_rate
+    type: duplicate
+    columns: [customer_id]
+    max_rate: 0.15
+    severity: warn
+
+  - id: region_drift
+    type: drift
+    column: region
+    baseline: ../batches/baseline/batch_base.csv
+    threshold: 0.12
+    metric: max_share_delta
+    severity: warn
+
+decision:
+  block_on_fail: true
+  review_on_warn_count: 1
+  review_on_skip_count: null
