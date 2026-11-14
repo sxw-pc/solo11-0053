@@ -10,3 +10,7 @@ out/
 out-strict/
 *.sqlite3
 .coverage
+node_modules/
+*.pyc
+.benchmarks/
+.env
