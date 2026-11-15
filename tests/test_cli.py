@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from click.testing import CliRunner
+from test_record_number_upgrade import _persist_legacy_csv_ledger
 
 from gatesampler.cli import main
 from gatesampler.config import load_run_config
@@ -58,3 +59,17 @@ def test_cli_replay_missing_record(demos):
     result = runner.invoke(main, ["replay", "--ledger", str(demos["out"] / "none.sqlite3"), "--run-id", "run-nope"])
     assert result.exit_code == 2
     assert "GS-LGR-002" in result.output
+
+
+def test_cli_replay_legacy_ledger_announces_upgrade_without_error_exit(demos):
+    config = load_run_config(demos["config"])
+    csv_outcomes = _persist_legacy_csv_ledger(config)
+    run_id = csv_outcomes[0].judgment.run_id
+    runner = CliRunner()
+    result = runner.invoke(
+        main, ["replay", "--ledger", str(config.ledger_path), "--run-id", run_id]
+    )
+    # 记录号语义升级属于预期签名变化，不应以数据漂移的非零码退出
+    assert result.exit_code == 0, result.output
+    assert "记录号语义升级" in result.output
+    assert "非数据漂移" in result.output

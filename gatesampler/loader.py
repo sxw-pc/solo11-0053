@@ -94,6 +94,27 @@ def _convert(
     return value
 
 
+class _LineNumberingIterator:
+    """Yield source lines while tracking the 1-based physical line of the next line.
+
+    ``csv.reader`` consumes one or more source lines per record (a quoted field may
+    span several lines); exposing the line number before each fetch lets the caller
+    record the physical line at which a record starts.
+    """
+
+    def __init__(self, text: str):
+        self._lines = iter(io.StringIO(text, newline=""))
+        self.line_no = 0
+
+    def __iter__(self) -> _LineNumberingIterator:
+        return self
+
+    def __next__(self) -> str:
+        line = next(self._lines)
+        self.line_no += 1
+        return line
+
+
 def _load_csv(
     text: str, schema: SchemaSpec, warnings: list[LoadWarning]
 ) -> tuple[list[str], list[dict[str, Any]], list[int]]:
@@ -101,22 +122,41 @@ def _load_csv(
         _warn(warnings, "GS-LOAD-104", "CSV 批次为空文件")
         return [], [], []
     try:
-        reader = csv.DictReader(io.StringIO(text, newline=""))
-        columns = list(reader.fieldnames or [])
+        line_iter = _LineNumberingIterator(text)
+        reader = csv.reader(line_iter)
+        try:
+            header = next(reader)
+        except StopIteration:
+            _warn(warnings, "GS-LOAD-104", "CSV 批次为空文件")
+            return [], [], []
+        columns = list(header)
         if len(columns) != len(set(columns)):
             _warn(warnings, "GS-LOAD-105", "CSV 表头包含重复列名", "header")
         rows: list[dict[str, Any]] = []
         record_numbers: list[int] = []
         null_tokens = set(schema.null_tokens)
-        for record_no, raw in enumerate(reader, start=1):
+        while True:
+            start_line = line_iter.line_no + 1
+            try:
+                values = next(reader)
+            except StopIteration:
+                break
+            # csv.reader 对完全空白行返回空列表；DictReader 会直接跳过这类行，
+            # 因此记录号保持为数据行在源文件中的真实物理行号（第 1 行为表头）。
+            if not values:
+                continue
+            raw = {
+                name: (values[index] if index < len(values) else None)
+                for index, name in enumerate(columns)
+            }
             row: dict[str, Any] = {}
             for name, spec in schema.columns.items():
-                row[name] = _convert(raw.get(name), spec, record_no, null_tokens, warnings)
+                row[name] = _convert(raw.get(name), spec, start_line, null_tokens, warnings)
             for name in columns:
                 if name not in row:
                     row[name] = raw.get(name)
             rows.append(row)
-            record_numbers.append(record_no)
+            record_numbers.append(start_line)
     except csv.Error as exc:
         raise GateSamplerError("GS-LOAD-003", f"CSV 解析失败: {exc}") from exc
     if not rows:

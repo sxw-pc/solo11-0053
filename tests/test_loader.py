@@ -47,7 +47,8 @@ def test_csv_utf8_bom_types_nulls_and_hash(tmp_path, schema):
     assert batch.rows[1]["amount"] is None
     assert batch.rows[1]["active"] is False
     assert batch.rows[1]["name"] is None
-    assert batch.record_numbers == [1, 2]
+    # 第 1 行为表头，数据行的记录号必须是源文件物理行号（2、3），而非数据行序号（1、2）
+    assert batch.record_numbers == [2, 3]
     assert batch.source_sha256 == hashlib.sha256(raw).hexdigest()
 
 
@@ -124,3 +125,54 @@ def test_invalid_utf8(tmp_path, schema):
     with pytest.raises(GateSamplerError) as caught:
         load(path, schema)
     assert caught.value.code == "GS-LOAD-002"
+
+
+def test_csv_record_numbers_are_physical_source_lines(tmp_path, schema):
+    # 第 1 行表头；第 3 行为空行；记录号必须能直接定位回源文件物理行。
+    path = tmp_path / "physical.csv"
+    path.write_text(
+        "id,amount,active,day,name\n"
+        "1,12.5,true,2024-01-02,alpha\n"
+        "\n"
+        "2,3.5,false,2024-01-03,beta\n"
+        "3,9.0,true,2024-01-04,gamma\n",
+        encoding="utf-8",
+    )
+    batch = load(path, schema)
+    assert [row["id"] for row in batch.rows] == [1, 2, 3]
+    assert batch.record_numbers == [2, 4, 5]
+    # 记录号与行数据一一对应：按物理行号回到源文件可找到该记录的 id
+    lines = path.read_text(encoding="utf-8").splitlines()
+    for record_no, row in zip(batch.record_numbers, batch.rows):
+        assert lines[record_no - 1].startswith(f"{row['id']},")
+
+
+def test_csv_record_numbers_handle_multiline_quoted_fields(tmp_path, schema):
+    # 带引号的跨行字段只占一条记录，记录号取该记录的起始物理行。
+    path = tmp_path / "multiline.csv"
+    path.write_text(
+        "id,name\n"
+        "1,alpha\n"
+        '2,"line-one\nline-two"\n'
+        "3,gamma\n",
+        encoding="utf-8",
+    )
+    batch = load(path, schema)
+    assert [row["id"] for row in batch.rows] == [1, 2, 3]
+    assert batch.record_numbers == [2, 3, 5]
+    assert batch.rows[1]["name"] == "line-one\nline-two"
+
+
+def test_jsonl_record_number_semantics_unchanged(tmp_path, schema):
+    path = tmp_path / "lines.jsonl"
+    path.write_text(
+        '{"id": 1, "name": "a"}\n'
+        "\n"
+        "not-json\n"
+        '{"id": 2, "name": "b"}\n',
+        encoding="utf-8",
+    )
+    batch = load(path, schema)
+    # 空行与非对象行被跳过后，记录号仍是源文件真实物理行号
+    assert [row["id"] for row in batch.rows] == [1, 2]
+    assert batch.record_numbers == [1, 4]

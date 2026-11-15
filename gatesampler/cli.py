@@ -103,6 +103,12 @@ def replay_command(
             f"sample={result.judgment.sample.sample_fingerprint}"
         )
         click.echo(f"  report_sha256={result.recomputed_report_sha256}")
+    elif result.record_number_upgrade:
+        click.echo(f"重放差异（记录号语义升级，非数据漂移）: {result.run_id}")
+        for note in result.upgrade_notes:
+            click.echo(f"  - {note}")
+        for mismatch in result.mismatches:
+            click.echo(f"  - {mismatch}")
     else:
         click.echo(f"重放不一致: {result.run_id}", err=True)
         for mismatch in result.mismatches:
